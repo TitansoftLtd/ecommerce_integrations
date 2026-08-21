@@ -115,11 +115,24 @@ def get_current_domain_name() -> str:
 	"""Get current site domain name. E.g. test.erpnext.com
 
 	If developer_mode is enabled and localtunnel_url is set in site config then domain  is set to localtunnel_url.
+
+	Falls back to the site URL when there is no HTTP request (console, migrate, jobs).
 	"""
 	if frappe.conf.developer_mode and frappe.conf.localtunnel_url:
 		return frappe.conf.localtunnel_url
-	else:
-		return frappe.request.host
+
+	try:
+		host = frappe.request.host
+		if host:
+			return host
+	except RuntimeError:
+		pass
+
+	from urllib.parse import urlparse
+
+	from frappe.utils import get_url
+
+	return urlparse(get_url()).netloc or frappe.local.site
 
 
 def get_callback_url() -> str:

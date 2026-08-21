@@ -162,10 +162,7 @@ def refresh_oauth_token(setting) -> str:
 			title=_("Invalid Authentication Method"),
 		)
 
-	# Check one more time with fresh data
-	setting.reload()
-
-	# Get fresh token
+	# Get fresh token using the current in-memory document values
 	token_data = generate_oauth_token(
 		setting.shopify_url,
 		setting.client_id,
@@ -174,6 +171,7 @@ def refresh_oauth_token(setting) -> str:
 
 	# Calculate expiry time
 	expires_at = calculate_token_expiry(token_data.get("expires_in", 86399))
+	expires_at_str = get_datetime_str(expires_at)
 
 	set_encrypted_password(
 		"Shopify Setting",
@@ -186,11 +184,11 @@ def refresh_oauth_token(setting) -> str:
 		"Shopify Setting",
 		setting.name,
 		"token_expires_at",
-		get_datetime_str(expires_at),
+		expires_at_str,
 		update_modified=False,
 	)
 
-	setting.reload()
+	setting.token_expires_at = expires_at_str
 
 	return token_data["access_token"]
 
