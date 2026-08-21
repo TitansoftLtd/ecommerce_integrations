@@ -27,6 +27,7 @@ from ecommerce_integrations.shopify.constants import (
 )
 from ecommerce_integrations.shopify.oauth import validate_oauth_credentials
 from ecommerce_integrations.shopify.utils import (
+	create_shopify_log,
 	ensure_old_connector_is_disabled,
 	migrate_from_old_connector,
 )
@@ -173,14 +174,26 @@ class ShopifySetting(SettingController):
 				self.append("webhooks", {"webhook_id": webhook.id, "method": webhook.topic})
 
 		elif not self.is_enabled():
-			# Get the appropriate password/token for webhook unregistration
+			# Get a valid token for webhook unregistration (refresh if expired)
 			if self.authentication_method == "OAuth 2.0 Client Credentials":
-				password = self._get_password_safe("oauth_access_token")
+				try:
+					password = self._get_or_generate_oauth_token()
+				except Exception:
+					password = self._get_password_safe("oauth_access_token")
 			else:
 				password = self._get_password_safe("password")
 
-			if password:  # Only unregister if we have a password
-				connection.unregister_webhooks(self.shopify_url, password)
+			if password:
+				try:
+					connection.unregister_webhooks(self.shopify_url, password)
+				except Exception as e:
+					# Do not block disabling the integration if Shopify is unreachable
+					create_shopify_log(
+						status="Warning",
+						method="ecommerce_integrations.shopify.doctype.shopify_setting.shopify_setting._handle_webhooks",
+						message=_("Failed to unregister Shopify webhooks while disabling integration"),
+						exception=str(e),
+					)
 
 			self.webhooks = list()  # remove all webhooks
 
