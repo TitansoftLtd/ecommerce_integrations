@@ -293,18 +293,18 @@ def update_taxes_with_shipping_lines(taxes, shipping_lines, setting, items, taxe
 	"""Shipping lines represents the shipping details,
 	each such shipping detail consists of a list of tax_lines"""
 	shipping_as_item = cint(setting.add_shipping_as_item) and setting.shipping_item
-	for shipping_charge in shipping_lines:
-		if shipping_charge.get("price"):
-			shipping_discounts = shipping_charge.get("discount_allocations") or []
-			total_discount = sum(flt(discount.get("amount")) for discount in shipping_discounts)
+	for shipping_charge in shipping_lines or []:
+		shipping_discounts = shipping_charge.get("discount_allocations") or []
+		total_discount = sum(flt(discount.get("amount")) for discount in shipping_discounts)
 
-			shipping_taxes = shipping_charge.get("tax_lines") or []
-			total_tax = sum(flt(discount.get("price")) for discount in shipping_taxes)
+		shipping_taxes = shipping_charge.get("tax_lines") or []
+		total_tax = sum(flt(tax.get("price")) for tax in shipping_taxes)
 
-			shipping_charge_amount = flt(shipping_charge["price"]) - flt(total_discount)
-			if bool(taxes_inclusive):
-				shipping_charge_amount -= total_tax
+		shipping_charge_amount = flt(shipping_charge.get("price")) - flt(total_discount)
+		if taxes_inclusive:
+			shipping_charge_amount -= total_tax
 
+		if shipping_charge_amount > 0:
 			if shipping_as_item:
 				items.append(
 					{
@@ -328,7 +328,7 @@ def update_taxes_with_shipping_lines(taxes, shipping_lines, setting, items, taxe
 					}
 				)
 
-		for tax in shipping_charge.get("tax_lines"):
+		for tax in shipping_taxes:
 			taxes.append(
 				{
 					"charge_type": "Actual",
