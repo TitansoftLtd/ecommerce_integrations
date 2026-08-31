@@ -19,6 +19,7 @@ from ecommerce_integrations.shopify.constants import (
 	CUSTOMER_ID_FIELD,
 	FULLFILLMENT_ID_FIELD,
 	ITEM_SELLING_RATE_FIELD,
+	SHOPIFY_PRODUCT_TITLE_FIELD,
 	ORDER_ID_FIELD,
 	ORDER_ITEM_DISCOUNT_FIELD,
 	ORDER_NUMBER_FIELD,
@@ -264,11 +265,19 @@ def setup_custom_fields():
 	custom_fields = {
 		"Item": [
 			dict(
+				fieldname=SHOPIFY_PRODUCT_TITLE_FIELD,
+				label="Shopify Product Title",
+				fieldtype="Data",
+				insert_after="item_name",
+				depends_on="eval:!doc.variant_of",
+				description="Used as the Shopify product title on outbound sync. Falls back to Item Name if empty.",
+			),
+			dict(
 				fieldname=ITEM_SELLING_RATE_FIELD,
 				label="Shopify Selling Rate",
 				fieldtype="Currency",
 				insert_after="standard_rate",
-			)
+			),
 		],
 		"Customer": [
 			dict(

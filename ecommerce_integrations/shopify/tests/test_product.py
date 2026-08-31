@@ -3,12 +3,26 @@
 
 import frappe
 
-from ecommerce_integrations.shopify.product import ShopifyProduct
+from ecommerce_integrations.shopify.constants import SHOPIFY_PRODUCT_TITLE_FIELD
+from ecommerce_integrations.shopify.product import ShopifyProduct, get_shopify_product_title
 
 from .utils import TestCase
 
 
 class TestProduct(TestCase):
+	def test_get_shopify_product_title(self):
+		item = frappe._dict(item_name="Internal Name")
+		self.assertEqual(get_shopify_product_title(item), "Internal Name")
+
+		item[SHOPIFY_PRODUCT_TITLE_FIELD] = "Storefront Title"
+		self.assertEqual(get_shopify_product_title(item), "Storefront Title")
+
+		item[SHOPIFY_PRODUCT_TITLE_FIELD] = "  Trimmed Title  "
+		self.assertEqual(get_shopify_product_title(item), "Trimmed Title")
+
+		item[SHOPIFY_PRODUCT_TITLE_FIELD] = ""
+		self.assertEqual(get_shopify_product_title(item), "Internal Name")
+
 	def test_sync_single_product(self):
 		self.fake("products/6732194021530", body=self.load_fixture("single_product"))
 

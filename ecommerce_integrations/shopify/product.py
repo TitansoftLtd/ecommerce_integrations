@@ -10,6 +10,7 @@ from ecommerce_integrations.ecommerce_integrations.doctype.ecommerce_item import
 from ecommerce_integrations.shopify.connection import temp_shopify_session
 from ecommerce_integrations.shopify.constants import (
 	ITEM_SELLING_RATE_FIELD,
+	SHOPIFY_PRODUCT_TITLE_FIELD,
 	MODULE_NAME,
 	SETTING_DOCTYPE,
 	SHOPIFY_VARIANTS_ATTR_LIST,
@@ -388,7 +389,7 @@ def upload_erpnext_item(doc, method=None):
 				product.options = []
 				product.variants = []
 				variant_attributes = {
-					"title": template_item.item_name,
+					"title": get_shopify_product_title(template_item),
 					"sku": item.item_code,
 					"price": item.get(ITEM_SELLING_RATE_FIELD),
 				}
@@ -501,10 +502,15 @@ def map_erpnext_variant_to_shopify_variant(shopify_product: Product, erpnext_ite
 	return variant_product_id
 
 
+def get_shopify_product_title(erpnext_item) -> str:
+	"""Shopify product title for outbound sync; falls back to Item Name."""
+	return (erpnext_item.get(SHOPIFY_PRODUCT_TITLE_FIELD) or erpnext_item.item_name or "").strip()
+
+
 def map_erpnext_item_to_shopify(shopify_product: Product, erpnext_item):
 	"""Map erpnext fields to shopify, called both when updating and creating new products."""
 
-	shopify_product.title = erpnext_item.item_name
+	shopify_product.title = get_shopify_product_title(erpnext_item)
 	shopify_product.body_html = erpnext_item.description
 	shopify_product.product_type = erpnext_item.item_group
 
