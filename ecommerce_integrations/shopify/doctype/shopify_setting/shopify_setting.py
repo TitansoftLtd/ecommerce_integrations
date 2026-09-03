@@ -277,15 +277,24 @@ def setup_custom_fields():
 				label="Shopify Product Title",
 				fieldtype="Data",
 				insert_after=SHOPIFY_TAB_FIELD,
-				depends_on="eval:!doc.variant_of",
-				description="Required for outbound Shopify sync. Items without this title are skipped.",
+				# shown on templates too, options mode reads the title from there
+				depends_on="",
+				description=(
+					"Product title used when syncing to Shopify. Required, items without it are skipped. "
+					"Read from this item when variants sync as standalone products, or from the template "
+					"when they sync as options of one Shopify product."
+				),
 			),
 			dict(
 				fieldname=SYNC_TO_SHOPIFY_FIELD,
 				label="Sync To Shopify",
 				fieldtype="Check",
 				insert_after=SHOPIFY_PRODUCT_TITLE_FIELD,
-				depends_on="eval:!doc.variant_of",
+				depends_on="eval:!doc.has_variants",
+				description=(
+					"Set this on the item that is sold, a single item or a variant. "
+					"Templates are never uploaded to Shopify."
+				),
 			),
 			dict(
 				fieldname=ITEM_SELLING_RATE_FIELD,

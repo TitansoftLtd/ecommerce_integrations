@@ -41,5 +41,10 @@ SHOPIFY_PRODUCT_TITLE_FIELD = "shopify_product_title"
 SHOPIFY_TAB_FIELD = "shopify_tab"
 SYNC_TO_SHOPIFY_FIELD = "sync_to_shopify"
 
+# how ERPNext variants are represented on Shopify
+VARIANT_SYNC_MODE_FIELD = "variant_sync_mode"
+VARIANT_SYNC_STANDALONE = "Standalone Products"
+VARIANT_SYNC_AS_OPTIONS = "Shopify Product Options"
+
 # ERPNext already defines the default UOMs from Shopify but names are different
 WEIGHT_TO_ERPNEXT_UOM_MAP = {"kg": "Kg", "g": "Gram", "oz": "Ounce", "lb": "Pound"}

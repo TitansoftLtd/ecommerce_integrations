@@ -4,7 +4,11 @@
 import frappe
 
 from ecommerce_integrations.shopify.constants import SHOPIFY_PRODUCT_TITLE_FIELD
-from ecommerce_integrations.shopify.product import ShopifyProduct, get_shopify_product_title
+from ecommerce_integrations.shopify.product import (
+	ShopifyProduct,
+	_resolve_shopify_options,
+	get_shopify_product_title,
+)
 
 from .utils import TestCase
 
@@ -22,6 +26,43 @@ class TestProduct(TestCase):
 
 		item[SHOPIFY_PRODUCT_TITLE_FIELD] = ""
 		self.assertEqual(get_shopify_product_title(item), "")
+
+	def test_resolve_shopify_options_matches_attributes_by_name(self):
+		create_item_attributes()
+		template = frappe._dict(
+			attributes=[
+				frappe._dict(attribute="Test Sync Size"),
+				frappe._dict(attribute="Test Sync Colour"),
+			]
+		)
+		# variant rows are in the opposite order of the template
+		variant = frappe._dict(
+			name="TSHIRT-L-RED",
+			attributes=[
+				frappe._dict(attribute="Test Sync Colour", attribute_value="Red"),
+				frappe._dict(attribute="Test Sync Size", attribute_value="L"),
+			],
+		)
+
+		options, selected_options = _resolve_shopify_options(template, variant)
+
+		self.assertEqual([o["name"] for o in options], ["Test Sync Size", "Test Sync Colour"])
+		self.assertEqual(selected_options, {"option1": "L", "option2": "Red"})
+
+	def test_resolve_shopify_options_skips_incomplete_variant(self):
+		create_item_attributes()
+		template = frappe._dict(
+			attributes=[
+				frappe._dict(attribute="Test Sync Size"),
+				frappe._dict(attribute="Test Sync Colour"),
+			]
+		)
+		variant = frappe._dict(
+			name="TSHIRT-L",
+			attributes=[frappe._dict(attribute="Test Sync Size", attribute_value="L")],
+		)
+
+		self.assertIsNone(_resolve_shopify_options(template, variant))
 
 	def test_sync_single_product(self):
 		self.fake("products/6732194021530", body=self.load_fixture("single_product"))
