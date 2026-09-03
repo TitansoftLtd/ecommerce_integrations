@@ -20,6 +20,8 @@ from ecommerce_integrations.shopify.constants import (
 	FULLFILLMENT_ID_FIELD,
 	ITEM_SELLING_RATE_FIELD,
 	SHOPIFY_PRODUCT_TITLE_FIELD,
+	SHOPIFY_TAB_FIELD,
+	SYNC_TO_SHOPIFY_FIELD,
 	ORDER_ID_FIELD,
 	ORDER_ITEM_DISCOUNT_FIELD,
 	ORDER_NUMBER_FIELD,
@@ -265,12 +267,25 @@ def setup_custom_fields():
 	custom_fields = {
 		"Item": [
 			dict(
+				fieldname=SHOPIFY_TAB_FIELD,
+				label="Shopify",
+				fieldtype="Tab Break",
+				insert_after="prices_html",
+			),
+			dict(
 				fieldname=SHOPIFY_PRODUCT_TITLE_FIELD,
 				label="Shopify Product Title",
 				fieldtype="Data",
-				insert_after="item_name",
+				insert_after=SHOPIFY_TAB_FIELD,
 				depends_on="eval:!doc.variant_of",
 				description="Required for outbound Shopify sync. Items without this title are skipped.",
+			),
+			dict(
+				fieldname=SYNC_TO_SHOPIFY_FIELD,
+				label="Sync To Shopify",
+				fieldtype="Check",
+				insert_after=SHOPIFY_PRODUCT_TITLE_FIELD,
+				depends_on="eval:!doc.variant_of",
 			),
 			dict(
 				fieldname=ITEM_SELLING_RATE_FIELD,
