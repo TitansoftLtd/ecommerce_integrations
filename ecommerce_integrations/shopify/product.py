@@ -11,6 +11,7 @@ from ecommerce_integrations.shopify.connection import temp_shopify_session
 from ecommerce_integrations.shopify.constants import (
 	ITEM_SELLING_RATE_FIELD,
 	SHOPIFY_PRODUCT_TITLE_FIELD,
+	SYNC_TO_SHOPIFY_FIELD,
 	MODULE_NAME,
 	SETTING_DOCTYPE,
 	SHOPIFY_VARIANTS_ATTR_LIST,
@@ -362,6 +363,9 @@ def upload_erpnext_item(doc, method=None):
 
 	if item.variant_of:
 		template_item = frappe.get_doc("Item", item.variant_of)
+
+	if not cint(template_item.get(SYNC_TO_SHOPIFY_FIELD)):
+		return
 
 	if not get_shopify_product_title(template_item):
 		create_shopify_log(
