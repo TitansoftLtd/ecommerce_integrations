@@ -270,7 +270,7 @@ def setup_custom_fields():
 				fieldtype="Data",
 				insert_after="item_name",
 				depends_on="eval:!doc.variant_of",
-				description="Used as the Shopify product title on outbound sync. Falls back to Item Name if empty.",
+				description="Required for outbound Shopify sync. Items without this title are skipped.",
 			),
 			dict(
 				fieldname=ITEM_SELLING_RATE_FIELD,

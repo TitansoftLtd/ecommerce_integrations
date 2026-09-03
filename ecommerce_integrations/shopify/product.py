@@ -363,6 +363,18 @@ def upload_erpnext_item(doc, method=None):
 	if item.variant_of:
 		template_item = frappe.get_doc("Item", item.variant_of)
 
+	if not get_shopify_product_title(template_item):
+		create_shopify_log(
+			status="Error",
+			method="upload_erpnext_item",
+			message=_(
+				"Skipped Shopify sync for Item {0}: Shopify Product Title is required."
+			).format(template_item.name),
+			request_data={"item_code": template_item.name},
+			make_new=True,
+		)
+		return
+
 	product_id = frappe.db.get_value(
 		"Ecommerce Item",
 		{"erpnext_item_code": template_item.name, "integration": MODULE_NAME},
@@ -503,8 +515,8 @@ def map_erpnext_variant_to_shopify_variant(shopify_product: Product, erpnext_ite
 
 
 def get_shopify_product_title(erpnext_item) -> str:
-	"""Shopify product title for outbound sync; falls back to Item Name."""
-	return (erpnext_item.get(SHOPIFY_PRODUCT_TITLE_FIELD) or erpnext_item.item_name or "").strip()
+	"""Return Shopify Product Title for outbound sync, or empty if not set."""
+	return cstr(erpnext_item.get(SHOPIFY_PRODUCT_TITLE_FIELD)).strip()
 
 
 def map_erpnext_item_to_shopify(shopify_product: Product, erpnext_item):
