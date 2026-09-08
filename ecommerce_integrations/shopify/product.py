@@ -421,7 +421,7 @@ def upload_erpnext_item(doc, method=None):
 							),
 						}
 					)
-					variant_attributes[f"option{i+1}"] = selected_options[f"option{i+1}"]
+					variant_attributes[f"option{i + 1}"] = selected_options[f"option{i + 1}"]
 				product.variants.append(Variant(variant_attributes))
 
 			product.save()  # push variant
@@ -467,7 +467,7 @@ def upload_erpnext_item(doc, method=None):
 							),
 						}
 					)
-					variant_attributes[f"option{i+1}"] = selected_options[f"option{i+1}"]
+					variant_attributes[f"option{i + 1}"] = selected_options[f"option{i + 1}"]
 				product.variants.append(Variant(variant_attributes))
 
 			is_successful = product.save()
@@ -488,16 +488,17 @@ def _log_skipped_item(item_code: str, reason: str, **request_data) -> None:
 
 
 def _resolve_shopify_options(template_item, variant_item):
-	"""Match variant attribute values to template attributes by name (not list index).
+	"""Match variant attribute values to template attributes by name.
 
 	Returns (product.options payloads, option1/2/3 values) or None when incomplete.
+	Shopify rejects variants that omit option values for product-defined options.
 	"""
 	values = {row.attribute: row.attribute_value for row in variant_item.attributes}
 
 	options = []
 	selected_options = {}
 	for i, attr in enumerate(template_item.attributes[:3]):
-		value = values.get(attr.attribute)
+		value = cstr(values.get(attr.attribute)).strip()
 		if not value:
 			_log_skipped_item(
 				variant_item.name,
