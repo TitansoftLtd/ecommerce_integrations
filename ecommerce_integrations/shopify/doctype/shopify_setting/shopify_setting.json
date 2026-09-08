@@ -50,7 +50,6 @@
   "update_shopify_item_on_update",
   "column_break_34",
   "sync_new_item_as_active",
-  "variant_sync_mode",
   "upload_variants_as_items",
   "inventory_sync_section",
   "warehouse",
@@ -380,18 +379,9 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "Standalone Products",
-   "depends_on": "eval:doc.upload_erpnext_items",
-   "description": "Standalone Products: each item that is sold, including a variant, becomes its own Shopify product. Shopify Product Options: an ERPNext template becomes one Shopify product and its variants become that product's options.",
-   "fieldname": "variant_sync_mode",
-   "fieldtype": "Select",
-   "label": "Sync ERPNext Variants As",
-   "options": "Standalone Products\nShopify Product Options"
-  },
-  {
    "default": "0",
-   "depends_on": "eval:doc.variant_sync_mode == 'Shopify Product Options'",
-   "description": "Caution: Only 3 attributes will be accepted by Shopify",
+   "depends_on": "eval:doc.upload_erpnext_items",
+   "description": "Caution: Only 3 attributes will be accepted by Shopify. An ERPNext template becomes one Shopify product; its variants become that product's options.",
    "fieldname": "upload_variants_as_items",
    "fieldtype": "Check",
    "label": "Upload ERPNext Variants as Shopify Items"

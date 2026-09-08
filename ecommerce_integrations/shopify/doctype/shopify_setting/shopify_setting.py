@@ -271,18 +271,19 @@ def setup_custom_fields():
 				label="Shopify",
 				fieldtype="Tab Break",
 				insert_after="prices_html",
+				# singles + templates only; variants sync as options of the template
+				depends_on="eval:!doc.variant_of",
 			),
 			dict(
 				fieldname=SHOPIFY_PRODUCT_TITLE_FIELD,
 				label="Shopify Product Title",
 				fieldtype="Data",
 				insert_after=SHOPIFY_TAB_FIELD,
-				# shown on templates too, options mode reads the title from there
-				depends_on="",
+				depends_on="eval:!doc.variant_of",
 				description=(
-					"Product title used when syncing to Shopify. Required, items without it are skipped. "
-					"Read from this item when variants sync as standalone products, or from the template "
-					"when they sync as options of one Shopify product."
+					"Shopify product title. Required for outbound sync. "
+					"Set on single items (synced directly) or on templates "
+					"(variants sync as options of this product)."
 				),
 			),
 			dict(
@@ -290,10 +291,11 @@ def setup_custom_fields():
 				label="Sync To Shopify",
 				fieldtype="Check",
 				insert_after=SHOPIFY_PRODUCT_TITLE_FIELD,
-				depends_on="eval:!doc.has_variants",
+				depends_on="eval:!doc.variant_of",
 				description=(
-					"Set this on the item that is sold, a single item or a variant. "
-					"Templates are never uploaded to Shopify."
+					"Enable outbound Shopify sync for this single item or template. "
+					"Variants are not configured here; they sync as options when "
+					"Upload ERPNext Variants as Shopify Items is enabled."
 				),
 			),
 			dict(

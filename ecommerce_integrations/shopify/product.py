@@ -12,8 +12,6 @@ from ecommerce_integrations.shopify.constants import (
 	ITEM_SELLING_RATE_FIELD,
 	SHOPIFY_PRODUCT_TITLE_FIELD,
 	SYNC_TO_SHOPIFY_FIELD,
-	VARIANT_SYNC_AS_OPTIONS,
-	VARIANT_SYNC_MODE_FIELD,
 	MODULE_NAME,
 	SETTING_DOCTYPE,
 	SHOPIFY_VARIANTS_ATTR_LIST,
@@ -339,7 +337,7 @@ def upload_erpnext_item(doc, method=None):
 	New items are pushed to shopify and changes to existing items are
 	updated depending on what is configured in "Shopify Setting" doctype.
 	"""
-	item = doc  # alias for readability
+	template_item = item = doc  # alias for readability
 	# a new item recieved from ecommerce_integrations is being inserted
 	if item.flags.from_integration:
 		return
@@ -352,150 +350,35 @@ def upload_erpnext_item(doc, method=None):
 	if frappe.flags.in_import:
 		return
 
-	# templates are not sold, only the single items and variants under them
 	if item.has_variants:
 		return
-
-	# "Sync To Shopify" always lives on the item being sold, in either sync mode
-	if not cint(item.get(SYNC_TO_SHOPIFY_FIELD)):
-		return
-
-	if setting.get(VARIANT_SYNC_MODE_FIELD) == VARIANT_SYNC_AS_OPTIONS:
-		_upload_item_as_option_variant(item, setting)
-	else:
-		_upload_item_as_standalone_product(item, setting)
-
-
-def _log_skipped_item(item_code: str, reason: str, **request_data) -> None:
-	create_shopify_log(
-		status="Error",
-		method="upload_erpnext_item",
-		message=_("Skipped Shopify sync for Item {0}: {1}").format(item_code, reason),
-		request_data={"item_code": item_code, **request_data},
-		make_new=True,
-	)
-
-
-def _upload_item_as_standalone_product(item, setting) -> None:
-	"""Upload a single item or an ERPNext variant as a Shopify product of its own."""
-	if not get_shopify_product_title(item):
-		_log_skipped_item(item.name, _("Shopify Product Title is required."))
-		return
-
-	product_id = frappe.db.get_value(
-		"Ecommerce Item",
-		{"erpnext_item_code": item.name, "integration": MODULE_NAME},
-		"integration_item_code",
-	)
-
-	if not product_id:
-		product = Product()
-		product.published = False
-		product.status = "active" if setting.sync_new_item_as_active else "draft"
-
-		map_erpnext_item_to_shopify(shopify_product=product, erpnext_item=item)
-		is_successful = product.save()
-
-		if is_successful:
-			update_default_variant_properties(
-				product,
-				sku=item.item_code,
-				price=item.get(ITEM_SELLING_RATE_FIELD),
-				is_stock_item=item.is_stock_item,
-			)
-			product.save()  # push variant
-
-			frappe.get_doc(
-				{
-					"doctype": "Ecommerce Item",
-					"erpnext_item_code": item.name,
-					"integration": MODULE_NAME,
-					"integration_item_code": str(product.id),
-					"variant_id": str(product.variants[0].id),
-					"sku": str(product.variants[0].sku),
-					"has_variants": 0,
-					"variant_of": item.variant_of,
-				}
-			).insert()
-
-		write_upload_log(status=is_successful, product=product, item=item)
-	elif setting.update_shopify_item_on_update:
-		product = Product.find(product_id)
-		if product:
-			map_erpnext_item_to_shopify(shopify_product=product, erpnext_item=item)
-			update_default_variant_properties(
-				product,
-				is_stock_item=item.is_stock_item,
-				price=item.get(ITEM_SELLING_RATE_FIELD),
-			)
-
-			is_successful = product.save()
-			write_upload_log(status=is_successful, product=product, item=item, action="Updated")
-
-
-def _resolve_shopify_options(template_item, variant_item):
-	"""Match a variant's attribute values against the template's attributes, by name.
-
-	Returns the Shopify product options along with the values this variant selects, or
-	None when the variant has no value for an attribute Shopify would show.
-	"""
-	values = {row.attribute: row.attribute_value for row in variant_item.attributes}
-
-	options = []
-	selected_options = {}
-	for i, attr in enumerate(template_item.attributes[:3]):
-		value = values.get(attr.attribute)
-		if not value:
-			_log_skipped_item(
-				variant_item.name,
-				_("missing value for attribute {0}.").format(attr.attribute),
-				attribute=attr.attribute,
-			)
-			return None
-
-		options.append(
-			{
-				"name": attr.attribute,
-				"values": frappe.db.get_all(
-					"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
-				),
-			}
-		)
-		selected_options[f"option{i + 1}"] = value
-
-	return options, selected_options
-
-
-def _upload_item_as_option_variant(item, setting) -> None:
-	"""Upload the ERPNext template as one Shopify product, its variants becoming options.
-
-	Shopify accepts upto three options, so only the first three attributes are mapped.
-	"""
-	template_item = item
 
 	if len(item.attributes) > 3:
 		msgprint(_("Template items/Items with 4 or more attributes can not be uploaded to Shopify."))
 		return
 
-	if item.variant_of and not setting.upload_variants_as_items:
+	if doc.variant_of and not setting.upload_variants_as_items:
 		msgprint(_("Enable variant sync in setting to upload item to Shopify."))
 		return
 
 	if item.variant_of:
 		template_item = frappe.get_doc("Item", item.variant_of)
 
-	# the Shopify product belongs to the template, and so does its title
+	# Sync To Shopify and product title live on the template (or single item), not on variants
+	if not cint(template_item.get(SYNC_TO_SHOPIFY_FIELD)):
+		return
+
 	if not get_shopify_product_title(template_item):
 		_log_skipped_item(template_item.name, _("Shopify Product Title is required."))
 		return
 
-	# resolved upfront, so an incomplete variant leaves no half built product on Shopify
-	options = selected_options = None
+	# resolve option values before calling Shopify so incomplete variants do not leave a half-built product
+	selected_options = None
 	if item.variant_of:
 		resolved = _resolve_shopify_options(template_item, item)
 		if not resolved:
 			return
-		options, selected_options = resolved
+		_, selected_options = resolved
 
 	product_id = frappe.db.get_value(
 		"Ecommerce Item",
@@ -520,17 +403,26 @@ def _upload_item_as_option_variant(item, setting) -> None:
 				is_stock_item=template_item.is_stock_item,
 			)
 			if item.variant_of:
-				product.options = options
-				product.variants = [
-					Variant(
+				product.options = []
+				product.variants = []
+				variant_attributes = {
+					"title": get_shopify_product_title(template_item),
+					"sku": item.item_code,
+					"price": item.get(ITEM_SELLING_RATE_FIELD),
+				}
+				max_index_range = min(3, len(template_item.attributes))
+				for i in range(0, max_index_range):
+					attr = template_item.attributes[i]
+					product.options.append(
 						{
-							"title": get_shopify_product_title(template_item),
-							"sku": item.item_code,
-							"price": item.get(ITEM_SELLING_RATE_FIELD),
-							**selected_options,
+							"name": attr.attribute,
+							"values": frappe.db.get_all(
+								"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
+							),
 						}
 					)
-				]
+					variant_attributes[f"option{i+1}"] = selected_options[f"option{i+1}"]
+				product.variants.append(Variant(variant_attributes))
 
 			product.save()  # push variant
 
@@ -562,12 +454,20 @@ def _upload_item_as_option_variant(item, setting) -> None:
 					price=item.get(ITEM_SELLING_RATE_FIELD),
 				)
 			else:
-				variant_attributes = {
-					"sku": item.item_code,
-					"price": item.get(ITEM_SELLING_RATE_FIELD),
-					**selected_options,
-				}
-				product.options = options
+				variant_attributes = {"sku": item.item_code, "price": item.get(ITEM_SELLING_RATE_FIELD)}
+				product.options = []
+				max_index_range = min(3, len(template_item.attributes))
+				for i in range(0, max_index_range):
+					attr = template_item.attributes[i]
+					product.options.append(
+						{
+							"name": attr.attribute,
+							"values": frappe.db.get_all(
+								"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
+							),
+						}
+					)
+					variant_attributes[f"option{i+1}"] = selected_options[f"option{i+1}"]
 				product.variants.append(Variant(variant_attributes))
 
 			is_successful = product.save()
@@ -575,6 +475,48 @@ def _upload_item_as_option_variant(item, setting) -> None:
 				map_erpnext_variant_to_shopify_variant(product, item, variant_attributes)
 
 			write_upload_log(status=is_successful, product=product, item=item, action="Updated")
+
+
+def _log_skipped_item(item_code: str, reason: str, **request_data) -> None:
+	create_shopify_log(
+		status="Error",
+		method="upload_erpnext_item",
+		message=_("Skipped Shopify sync for Item {0}: {1}").format(item_code, reason),
+		request_data={"item_code": item_code, **request_data},
+		make_new=True,
+	)
+
+
+def _resolve_shopify_options(template_item, variant_item):
+	"""Match variant attribute values to template attributes by name (not list index).
+
+	Returns (product.options payloads, option1/2/3 values) or None when incomplete.
+	"""
+	values = {row.attribute: row.attribute_value for row in variant_item.attributes}
+
+	options = []
+	selected_options = {}
+	for i, attr in enumerate(template_item.attributes[:3]):
+		value = values.get(attr.attribute)
+		if not value:
+			_log_skipped_item(
+				variant_item.name,
+				_("missing value for attribute {0}.").format(attr.attribute),
+				attribute=attr.attribute,
+			)
+			return None
+
+		options.append(
+			{
+				"name": attr.attribute,
+				"values": frappe.db.get_all(
+					"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
+				),
+			}
+		)
+		selected_options[f"option{i + 1}"] = value
+
+	return options, selected_options
 
 
 def map_erpnext_variant_to_shopify_variant(shopify_product: Product, erpnext_item, variant_attributes):
