@@ -453,28 +453,111 @@ def upload_erpnext_item(doc, method=None):
 					is_stock_item=template_item.is_stock_item,
 					price=item.get(ITEM_SELLING_RATE_FIELD),
 				)
+				is_successful = product.save()
 			else:
-				variant_attributes = {"sku": item.item_code, "price": item.get(ITEM_SELLING_RATE_FIELD)}
-				product.options = []
-				max_index_range = min(3, len(template_item.attributes))
-				for i in range(0, max_index_range):
-					attr = template_item.attributes[i]
-					product.options.append(
-						{
-							"name": attr.attribute,
-							"values": frappe.db.get_all(
-								"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
-							),
-						}
-					)
-					variant_attributes[f"option{i + 1}"] = selected_options[f"option{i + 1}"]
-				product.variants.append(Variant(variant_attributes))
-
-			is_successful = product.save()
-			if is_successful and item.variant_of:
-				map_erpnext_variant_to_shopify_variant(product, item, variant_attributes)
+				is_successful = _upsert_shopify_variant(
+					product, item, template_item, selected_options
+				)
 
 			write_upload_log(status=is_successful, product=product, item=item, action="Updated")
+
+
+def _build_variant_attributes(item, template_item, selected_options) -> dict:
+	variant_attributes = {"sku": item.item_code, "price": item.get(ITEM_SELLING_RATE_FIELD)}
+	max_index_range = min(3, len(template_item.attributes))
+	for i in range(0, max_index_range):
+		variant_attributes[f"option{i + 1}"] = selected_options[f"option{i + 1}"]
+	return variant_attributes
+
+
+def _set_product_options_from_template(product, template_item) -> None:
+	product.options = []
+	for attr in template_item.attributes[:3]:
+		product.options.append(
+			{
+				"name": attr.attribute,
+				"values": frappe.db.get_all(
+					"Item Attribute Value", {"parent": attr.attribute}, pluck="attribute_value"
+				),
+			}
+		)
+
+
+def _variant_options_match(shopify_variant, variant_attributes) -> bool:
+	for i in range(1, 4):
+		key = f"option{i}"
+		expected = variant_attributes.get(key)
+		actual = getattr(shopify_variant, key, None)
+		if expected in (None, "") and actual in (None, ""):
+			continue
+		if cstr(actual) != cstr(expected):
+			return False
+	return True
+
+
+def _find_shopify_variant(product, variant_attributes, variant_id: str | None = None):
+	if variant_id:
+		for variant in product.variants:
+			if str(variant.id) == str(variant_id):
+				return variant
+	for variant in product.variants:
+		if _variant_options_match(variant, variant_attributes):
+			return variant
+	return None
+
+
+def _apply_variant_attributes(shopify_variant, variant_attributes) -> None:
+	if variant_attributes.get("sku") is not None:
+		shopify_variant.sku = variant_attributes["sku"]
+	if variant_attributes.get("price") is not None:
+		shopify_variant.price = variant_attributes["price"]
+
+
+def _upsert_shopify_variant(product, item, template_item, selected_options) -> bool:
+	"""Update an existing Shopify variant or create it once.
+
+	Item insert runs both after_insert and on_update; without upsert the second
+	call appends a duplicate and Shopify returns “variant already exists”.
+	"""
+	_set_product_options_from_template(product, template_item)
+	variant_attributes = _build_variant_attributes(item, template_item, selected_options)
+
+	existing_variant_id = frappe.db.get_value(
+		"Ecommerce Item",
+		{"erpnext_item_code": item.name, "integration": MODULE_NAME},
+		"variant_id",
+	)
+	shopify_variant = _find_shopify_variant(product, variant_attributes, existing_variant_id)
+
+	if shopify_variant:
+		_apply_variant_attributes(shopify_variant, variant_attributes)
+		is_successful = product.save()
+		if is_successful:
+			map_erpnext_variant_to_shopify_variant(product, item, variant_attributes)
+		return is_successful
+
+	product.variants.append(Variant(variant_attributes))
+	is_successful = product.save()
+	if is_successful:
+		map_erpnext_variant_to_shopify_variant(product, item, variant_attributes)
+		return True
+
+	# Duplicate create (e.g. race with after_insert): treat as success if options exist
+	if _is_variant_already_exists_error(product):
+		product = Product.find(product.id)
+		if product and _find_shopify_variant(product, variant_attributes):
+			map_erpnext_variant_to_shopify_variant(product, item, variant_attributes)
+			return True
+
+	return False
+
+
+def _is_variant_already_exists_error(product) -> bool:
+	try:
+		messages = product.errors.full_messages()
+	except Exception:
+		return False
+	return any("already exists" in cstr(msg).lower() for msg in messages)
 
 
 def _log_skipped_item(item_code: str, reason: str, **request_data) -> None:
