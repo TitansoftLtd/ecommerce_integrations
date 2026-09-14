@@ -11,6 +11,7 @@ from ecommerce_integrations.shopify.connection import temp_shopify_session
 from ecommerce_integrations.shopify.constants import (
 	CUSTOMER_ID_FIELD,
 	EVENT_MAPPER,
+	ORDER_DISCOUNT_CODES_FIELD,
 	ORDER_ID_FIELD,
 	ORDER_ITEM_DISCOUNT_FIELD,
 	ORDER_NUMBER_FIELD,
@@ -108,6 +109,7 @@ def create_sales_order(shopify_order, setting, company=None):
 				"naming_series": setting.sales_order_series or "SO-Shopify-",
 				ORDER_ID_FIELD: str(shopify_order.get("id")),
 				ORDER_NUMBER_FIELD: shopify_order.get("name"),
+				ORDER_DISCOUNT_CODES_FIELD: _format_discount_codes(shopify_order),
 				"customer": customer,
 				"transaction_date": getdate(shopify_order.get("created_at")) or nowdate(),
 				"delivery_date": getdate(shopify_order.get("created_at")) or nowdate(),
@@ -151,18 +153,21 @@ def get_order_items(order_items, setting, delivery_date, taxes_inclusive):
 
 		if all_product_exists:
 			item_code = get_item_code(shopify_item)
+			price_list_rate, discount_per_unit = _get_line_price_and_discount(
+				shopify_item, taxes_inclusive
+			)
 			items.append(
 				{
 					"item_code": item_code,
 					"item_name": shopify_item.get("name"),
-					"rate": _get_item_price(shopify_item, taxes_inclusive),
+					"price_list_rate": price_list_rate,
+					"discount_amount": discount_per_unit,
+					"rate": flt(price_list_rate) - flt(discount_per_unit),
 					"delivery_date": delivery_date,
 					"qty": shopify_item.get("quantity"),
 					"stock_uom": shopify_item.get("uom") or "Nos",
 					"warehouse": setting.warehouse,
-					ORDER_ITEM_DISCOUNT_FIELD: (
-						_get_total_discount(shopify_item) / cint(shopify_item.get("quantity"))
-					),
+					ORDER_ITEM_DISCOUNT_FIELD: discount_per_unit,
 				}
 			)
 		else:
@@ -171,26 +176,41 @@ def get_order_items(order_items, setting, delivery_date, taxes_inclusive):
 	return items
 
 
-def _get_item_price(line_item, taxes_inclusive: bool) -> float:
-	price = flt(line_item.get("price"))
-	qty = cint(line_item.get("quantity"))
+def _get_line_price_and_discount(line_item, taxes_inclusive: bool) -> tuple[float, float]:
+	"""Return (price_list_rate, discount_amount per unit).
 
-	# remove line item level discounts
-	total_discount = _get_total_discount(line_item)
+	Shopify ``price`` is pre-discount. Discounts live in ``discount_allocations``.
+	When taxes are inclusive, peel tax out of the list price before applying discount.
+	"""
+	qty = cint(line_item.get("quantity")) or 1
+	price_list_rate = flt(line_item.get("price"))
+	discount_per_unit = flt(_get_total_discount(line_item)) / qty
 
-	if not taxes_inclusive:
-		return price - (total_discount / qty)
+	if taxes_inclusive:
+		total_taxes = sum(flt(tax.get("price")) for tax in line_item.get("tax_lines") or [])
+		price_list_rate -= total_taxes / qty
 
-	total_taxes = 0.0
-	for tax in line_item.get("tax_lines"):
-		total_taxes += flt(tax.get("price"))
-
-	return price - (total_taxes + total_discount) / qty
+	return price_list_rate, discount_per_unit
 
 
 def _get_total_discount(line_item) -> float:
 	discount_allocations = line_item.get("discount_allocations") or []
 	return sum(flt(discount.get("amount")) for discount in discount_allocations)
+
+
+def _format_discount_codes(shopify_order) -> str:
+	"""Human-readable Shopify discount codes for Sales Order staff visibility."""
+	parts = []
+	for row in shopify_order.get("discount_codes") or []:
+		code = cstr(row.get("code")).strip()
+		if not code:
+			continue
+		amount = row.get("amount")
+		if amount not in (None, ""):
+			parts.append(f"{code} ({flt(amount)})")
+		else:
+			parts.append(code)
+	return ", ".join(parts)
 
 
 def get_order_taxes(shopify_order, setting, items):
