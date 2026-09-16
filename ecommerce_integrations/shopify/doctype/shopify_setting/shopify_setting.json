@@ -36,6 +36,9 @@
   "column_break_27",
   "sync_delivery_note",
   "sync_sales_invoice",
+  "sync_shopify_refunds",
+  "sync_shopify_returns",
+  "shopify_returns_warehouse",
   "add_shipping_as_item",
   "consolidate_taxes",
   "section_break_22",
@@ -262,6 +265,27 @@
    "fieldtype": "Select",
    "label": "Sales Invoice Series",
    "mandatory_depends_on": "eval:doc.sync_sales_invoice"
+  },
+  {
+   "default": "0",
+   "fieldname": "sync_shopify_refunds",
+   "fieldtype": "Check",
+   "label": "Import Refunds from Shopify as Credit Notes"
+  },
+  {
+   "default": "0",
+   "fieldname": "sync_shopify_returns",
+   "fieldtype": "Check",
+   "label": "Import Returns from Shopify as Return Delivery Notes"
+  },
+  {
+   "depends_on": "eval:doc.sync_shopify_returns==1",
+   "description": "Returned stock is received into this warehouse (e.g. QC). Shopify restock location is ignored.",
+   "fieldname": "shopify_returns_warehouse",
+   "fieldtype": "Link",
+   "label": "Shopify Returns Warehouse",
+   "mandatory_depends_on": "eval:doc.sync_shopify_returns",
+   "options": "Warehouse"
   },
   {
    "fieldname": "section_break_22",

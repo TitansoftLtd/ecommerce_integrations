@@ -87,7 +87,18 @@ def register_webhooks(shopify_url: str, password: str) -> list[Webhook]:
 
 	with Session.temp(shopify_url, API_VERSION, password):
 		for topic in WEBHOOK_EVENTS:
-			webhook = Webhook.create({"topic": topic, "address": get_callback_url(), "format": "json"})
+			try:
+				webhook = Webhook.create(
+					{"topic": topic, "address": get_callback_url(), "format": "json"}
+				)
+			except Exception as e:
+				create_shopify_log(
+					status="Error",
+					method="ecommerce_integrations.shopify.connection.register_webhooks",
+					message=_("Failed to register Shopify webhook topic: {0}").format(topic),
+					exception=e,
+				)
+				continue
 
 			if webhook.is_valid():
 				new_webhooks.append(webhook)
@@ -106,9 +117,28 @@ def unregister_webhooks(shopify_url: str, password: str) -> None:
 	url = get_current_domain_name()
 
 	with Session.temp(shopify_url, API_VERSION, password):
-		for webhook in Webhook.find():
+		try:
+			webhooks = Webhook.find()
+		except Exception as e:
+			create_shopify_log(
+				status="Error",
+				method="ecommerce_integrations.shopify.connection.unregister_webhooks",
+				message=_("Failed to list Shopify webhooks for unregister"),
+				exception=e,
+			)
+			return
+
+		for webhook in webhooks:
 			if url in webhook.address:
-				webhook.destroy()
+				try:
+					webhook.destroy()
+				except Exception as e:
+					create_shopify_log(
+						status="Error",
+						method="ecommerce_integrations.shopify.connection.unregister_webhooks",
+						message=_("Failed to destroy Shopify webhook {0}").format(webhook.id),
+						exception=e,
+					)
 
 
 def get_current_domain_name() -> str:
@@ -159,12 +189,21 @@ def store_request_data() -> None:
 
 
 def process_request(data, event):
+	method = EVENT_MAPPER.get(event)
+	if not method:
+		create_shopify_log(
+			status="Invalid",
+			request_data=data,
+			message=_("Unhandled Shopify webhook topic: {0}").format(event),
+		)
+		return
+
 	# create log
-	log = create_shopify_log(method=EVENT_MAPPER[event], request_data=data)
+	log = create_shopify_log(method=method, request_data=data)
 
 	# enqueue backround job
 	frappe.enqueue(
-		method=EVENT_MAPPER[event],
+		method=method,
 		queue="short",
 		timeout=300,
 		is_async=True,

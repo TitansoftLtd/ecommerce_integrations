@@ -6,7 +6,7 @@ MODULE_NAME = "shopify"
 SETTING_DOCTYPE = "Shopify Setting"
 OLD_SETTINGS_DOCTYPE = "Shopify Settings"
 
-API_VERSION = "2024-01"
+API_VERSION = "2026-07"
 
 WEBHOOK_EVENTS = [
 	"orders/create",
@@ -14,6 +14,10 @@ WEBHOOK_EVENTS = [
 	"orders/fulfilled",
 	"orders/cancelled",
 	"orders/partially_fulfilled",
+	"refunds/create",
+	"returns/request",
+	"returns/process",
+	"returns/close",
 ]
 
 EVENT_MAPPER = {
@@ -22,6 +26,10 @@ EVENT_MAPPER = {
 	"orders/fulfilled": "ecommerce_integrations.shopify.fulfillment.prepare_delivery_note",
 	"orders/cancelled": "ecommerce_integrations.shopify.order.cancel_order",
 	"orders/partially_fulfilled": "ecommerce_integrations.shopify.fulfillment.prepare_delivery_note",
+	"refunds/create": "ecommerce_integrations.shopify.refund.prepare_refund",
+	"returns/request": "ecommerce_integrations.shopify.returns.prepare_return_request",
+	"returns/process": "ecommerce_integrations.shopify.returns.prepare_return",
+	"returns/close": "ecommerce_integrations.shopify.returns.prepare_return",
 }
 
 SHOPIFY_VARIANTS_ATTR_LIST = ["option1", "option2", "option3"]
@@ -33,6 +41,8 @@ ORDER_ID_FIELD = "shopify_order_id"
 ORDER_NUMBER_FIELD = "shopify_order_number"
 ORDER_STATUS_FIELD = "shopify_order_status"
 FULLFILLMENT_ID_FIELD = "shopify_fulfillment_id"
+REFUND_ID_FIELD = "shopify_refund_id"
+RETURN_ID_FIELD = "shopify_return_id"
 SUPPLIER_ID_FIELD = "shopify_supplier_id"
 ADDRESS_ID_FIELD = "shopify_address_id"
 ORDER_ITEM_DISCOUNT_FIELD = "shopify_item_discount"

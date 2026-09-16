@@ -27,6 +27,8 @@ from ecommerce_integrations.shopify.constants import (
 	ORDER_ITEM_DISCOUNT_FIELD,
 	ORDER_NUMBER_FIELD,
 	ORDER_STATUS_FIELD,
+	REFUND_ID_FIELD,
+	RETURN_ID_FIELD,
 	SUPPLIER_ID_FIELD,
 )
 from ecommerce_integrations.shopify.oauth import validate_oauth_credentials
@@ -67,6 +69,7 @@ class ShopifySetting(SettingController):
 		self._validate_oauth_credentials_if_needed()
 		self._handle_webhooks()
 		self._validate_warehouse_links()
+		self._validate_returns_settings()
 		self._initalize_default_values()
 
 		if self.is_enabled():
@@ -170,7 +173,8 @@ class ShopifySetting(SettingController):
 
 			if not new_webhooks:
 				msg = _("Failed to register webhooks with Shopify.") + "<br>"
-				msg += _("Please check credentials and retry.") + " "
+				msg += _("Please check credentials, app scopes, and API access, then retry.") + " "
+				msg += _("See Ecommerce Integration Log for topic-level errors.") + " "
 				msg += _("Disabling and re-enabling the integration might also help.")
 				frappe.throw(msg)
 
@@ -231,6 +235,21 @@ class ShopifySetting(SettingController):
 		for wh_map in self.shopify_warehouse_mapping:
 			if not wh_map.erpnext_warehouse:
 				frappe.throw(_("ERPNext warehouse required in warehouse map table."))
+
+	def _validate_returns_settings(self):
+		if not self.sync_shopify_returns:
+			return
+
+		if not self.shopify_returns_warehouse:
+			frappe.throw(_("Shopify Returns Warehouse is required when Import Returns is enabled."))
+
+		wh_company = frappe.db.get_value("Warehouse", self.shopify_returns_warehouse, "company")
+		if wh_company and self.company and wh_company != self.company:
+			frappe.throw(
+				_("Shopify Returns Warehouse {0} does not belong to company {1}.").format(
+					self.shopify_returns_warehouse, self.company
+				)
+			)
 
 	def _initalize_default_values(self):
 		if not self.last_inventory_sync:
@@ -412,6 +431,14 @@ def setup_custom_fields():
 				read_only=1,
 				print_hide=1,
 			),
+			dict(
+				fieldname=RETURN_ID_FIELD,
+				label="Shopify Return Id",
+				fieldtype="Data",
+				insert_after=FULLFILLMENT_ID_FIELD,
+				read_only=1,
+				print_hide=1,
+			),
 		],
 		"Sales Invoice": [
 			dict(
@@ -435,6 +462,14 @@ def setup_custom_fields():
 				label="Shopify Order Status",
 				fieldtype="Small Text",
 				insert_after=ORDER_ID_FIELD,
+				read_only=1,
+				print_hide=1,
+			),
+			dict(
+				fieldname=REFUND_ID_FIELD,
+				label="Shopify Refund Id",
+				fieldtype="Data",
+				insert_after=ORDER_NUMBER_FIELD,
 				read_only=1,
 				print_hide=1,
 			),

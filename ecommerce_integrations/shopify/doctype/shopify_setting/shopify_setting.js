@@ -48,6 +48,7 @@ frappe.ui.form.on("Shopify Setting", {
 			};
 		};
 		frm.set_query("warehouse", warehouse_query);
+		frm.set_query("shopify_returns_warehouse", warehouse_query);
 		frm.set_query(
 			"erpnext_warehouse",
 			"shopify_warehouse_mapping",
