@@ -378,7 +378,8 @@ def upload_erpnext_item(doc, method=None):
 		resolved = _resolve_shopify_options(template_item, item)
 		if not resolved:
 			return
-		_, selected_options = resolved
+		_options_list, selected_options = resolved
+
 
 	product_id = frappe.db.get_value(
 		"Ecommerce Item",
