@@ -59,6 +59,7 @@
   "update_erpnext_stock_levels_to_shopify",
   "inventory_sync_frequency",
   "fetch_shopify_locations",
+  "push_inventory_now",
   "shopify_warehouse_mapping",
   "sync_old_orders_section",
   "sync_old_orders",
@@ -334,6 +335,13 @@
    "fieldname": "fetch_shopify_locations",
    "fieldtype": "Button",
    "label": "Fetch Shopify Locations"
+  },
+  {
+   "depends_on": "eval:doc.update_erpnext_stock_levels_to_shopify",
+   "description": "Push ERPNext stock for all mapped warehouses to Shopify now (ignores the dirty-bin gate). Runs in the background.",
+   "fieldname": "push_inventory_now",
+   "fieldtype": "Button",
+   "label": "Push Stock to Shopify Now"
   },
   {
    "fieldname": "inventory_sync_section",

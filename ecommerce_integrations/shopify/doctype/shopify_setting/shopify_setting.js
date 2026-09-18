@@ -25,6 +25,20 @@ frappe.ui.form.on("Shopify Setting", {
 		});
 	},
 
+	push_inventory_now: function (frm) {
+		frappe.confirm(
+			__(
+				"Push ERPNext stock for all mapped warehouses to Shopify now? This ignores the dirty-bin gate and runs in the background."
+			),
+			() => {
+				frappe.call({
+					method: "ecommerce_integrations.shopify.inventory.push_inventory_to_shopify_now",
+					freeze: true,
+				});
+			}
+		);
+	},
+
 	refresh: function (frm) {
 		frm.add_custom_button(__("Import Products"), function () {
 			frappe.set_route("shopify-import-products");
@@ -33,6 +47,9 @@ frappe.ui.form.on("Shopify Setting", {
 			frappe.set_route("List", "Ecommerce Integration Log", {
 				integration: "Shopify",
 			});
+		});
+		frm.add_custom_button(__("Inventory Mismatch Report"), () => {
+			frappe.set_route("query-report", "Shopify Inventory Mismatch");
 		});
 		frm.trigger("setup_queries");
 	},

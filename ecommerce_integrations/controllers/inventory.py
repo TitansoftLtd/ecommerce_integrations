@@ -16,6 +16,22 @@ def get_inventory_levels(warehouses: tuple[str], integration: str) -> list[_dict
 
 	returns: list of _dict containing ecom_item, item_code, integration_item_code, variant_id, actual_qty, warehouse, reserved_qty
 	"""
+	return _query_inventory_levels(warehouses, integration, dirty_only=True)
+
+
+def get_all_inventory_levels(warehouses: tuple[str], integration: str) -> list[_dict]:
+	"""All linked inventory rows for mapped warehouses (ignores dirty-bin gate).
+
+	Used for force push / mismatch compare so Shopify can be aligned to ERPNext
+	even when Bin was not modified since the last successful sync.
+	"""
+	return _query_inventory_levels(warehouses, integration, dirty_only=False)
+
+
+def _query_inventory_levels(warehouses: tuple[str], integration: str, dirty_only: bool) -> list[_dict]:
+	if not warehouses:
+		return []
+
 	EcommerceItem = DocType("Ecommerce Item")
 	Bin = DocType("Bin")
 
@@ -28,16 +44,20 @@ def get_inventory_levels(warehouses: tuple[str], integration: str) -> list[_dict
 			Bin.item_code.as_("item_code"),
 			EcommerceItem.integration_item_code,
 			EcommerceItem.variant_id,
+			EcommerceItem.inventory_synced_on,
 			Bin.actual_qty,
 			Bin.warehouse,
 			Bin.reserved_qty,
 		)
 		.where(
 			(Bin.warehouse.isin(warehouses))
-			& (Bin.modified > EcommerceItem.inventory_synced_on)
 			& (EcommerceItem.integration == integration)
+			& (EcommerceItem.variant_id.isnotnull())
+			& (EcommerceItem.variant_id != "")
 		)
 	)
+	if dirty_only:
+		query = query.where(Bin.modified > EcommerceItem.inventory_synced_on)
 
 	return query.run(as_dict=1)
 
