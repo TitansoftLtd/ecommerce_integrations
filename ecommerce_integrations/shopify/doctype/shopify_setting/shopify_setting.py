@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-from frappe.utils import get_datetime
+from frappe.utils import cint, cstr, get_datetime
 from shopify.collection import PaginatedIterator
 from shopify.resources import Location
 
@@ -68,8 +68,11 @@ class ShopifySetting(SettingController):
 		self._validate_authentication_fields()
 		self._validate_oauth_credentials_if_needed()
 		self._handle_webhooks()
+		self._sync_warehouse_mapping_companies()
+		self._validate_company_config()
 		self._validate_warehouse_links()
 		self._validate_returns_settings()
+		self._validate_tax_accounts()
 		self._initalize_default_values()
 
 		if self.is_enabled():
@@ -231,25 +234,101 @@ class ShopifySetting(SettingController):
 				title=_("OAuth Authentication Error"),
 			)
 
-	def _validate_warehouse_links(self):
-		for wh_map in self.shopify_warehouse_mapping:
-			if not wh_map.erpnext_warehouse:
-				frappe.throw(_("ERPNext warehouse required in warehouse map table."))
+	def _sync_warehouse_mapping_companies(self):
+		for wh_map in self.shopify_warehouse_mapping or []:
+			if wh_map.erpnext_warehouse:
+				wh_map.company = frappe.db.get_value("Warehouse", wh_map.erpnext_warehouse, "company")
+			else:
+				wh_map.company = None
 
-	def _validate_returns_settings(self):
-		if not self.sync_shopify_returns:
+	def _validate_company_config(self):
+		if not self.is_enabled():
 			return
 
-		if not self.shopify_returns_warehouse:
-			frappe.throw(_("Shopify Returns Warehouse is required when Import Returns is enabled."))
+		rows = self.company_config or []
+		if not rows:
+			frappe.throw(_("Add at least one Shopify Company Config row when Shopify is enabled."))
 
-		wh_company = frappe.db.get_value("Warehouse", self.shopify_returns_warehouse, "company")
-		if wh_company and self.company and wh_company != self.company:
-			frappe.throw(
-				_("Shopify Returns Warehouse {0} does not belong to company {1}.").format(
-					self.shopify_returns_warehouse, self.company
+		companies = []
+		primary_count = 0
+		for row in rows:
+			if row.company in companies:
+				frappe.throw(_("Company {0} is configured more than once.").format(row.company))
+			companies.append(row.company)
+			if row.is_primary:
+				primary_count += 1
+
+			self._assert_link_company(row.default_warehouse, "Warehouse", row.company, _("Default Warehouse"))
+			self._assert_link_company(row.cash_bank_account, "Account", row.company, _("Cash/Bank Account"))
+			self._assert_link_company(row.cost_center, "Cost Center", row.company, _("Cost Center"))
+			if row.returns_warehouse:
+				self._assert_link_company(
+					row.returns_warehouse, "Warehouse", row.company, _("Returns Warehouse")
 				)
+			if row.default_sales_tax_account:
+				self._assert_link_company(
+					row.default_sales_tax_account, "Account", row.company, _("Default Sales Tax Account")
+				)
+			if row.default_shipping_charges_account:
+				self._assert_link_company(
+					row.default_shipping_charges_account,
+					"Account",
+					row.company,
+					_("Default Shipping Charges Account"),
+				)
+
+			if cint(self.sync_shopify_returns) and not row.returns_warehouse:
+				frappe.throw(
+					_("Returns Warehouse is required for company {0} when Import Returns is enabled.").format(
+						row.company
+					)
+				)
+
+		if primary_count != 1:
+			frappe.throw(_("Mark exactly one Shopify Company Config row as Primary."))
+
+	def _assert_link_company(self, value, doctype, company, label):
+		if not value:
+			return
+		link_company = frappe.db.get_value(doctype, value, "company", cache=True)
+		if link_company and link_company != company:
+			frappe.throw(_("{0} {1} does not belong to company {2}.").format(label, value, company))
+
+	def _validate_warehouse_links(self):
+		configured = {row.company for row in (self.company_config or []) if row.company}
+		for wh_map in self.shopify_warehouse_mapping or []:
+			if not wh_map.erpnext_warehouse:
+				frappe.throw(_("ERPNext warehouse required in warehouse map table."))
+			wh_company = wh_map.company or frappe.db.get_value(
+				"Warehouse", wh_map.erpnext_warehouse, "company"
 			)
+			if configured and wh_company and wh_company not in configured:
+				frappe.throw(
+					_(
+						"Warehouse {0} belongs to company {1}, which is not in Shopify Company Config."
+					).format(wh_map.erpnext_warehouse, wh_company)
+				)
+
+	def _validate_returns_settings(self):
+		# Per-company returns warehouse is validated in _validate_company_config.
+		return
+
+	def _validate_tax_accounts(self):
+		if not self.is_enabled():
+			return
+		configured = {row.company for row in (self.company_config or []) if row.company}
+		for tax in self.taxes or []:
+			if not tax.company:
+				# Allow legacy rows during transition; migration backfills company.
+				if configured and len(configured) == 1:
+					tax.company = next(iter(configured))
+				else:
+					frappe.throw(_("Company is required on each Shopify Tax Account row."))
+			if configured and tax.company not in configured:
+				frappe.throw(
+					_("Tax row company {0} is not in Shopify Company Config.").format(tax.company)
+				)
+			self._assert_link_company(tax.tax_account, "Account", tax.company, _("Tax Account"))
 
 	def _initalize_default_values(self):
 		if not self.last_inventory_sync:
@@ -259,15 +338,25 @@ class ShopifySetting(SettingController):
 	@connection.temp_shopify_session
 	def update_location_table(self):
 		"""Fetch locations from shopify and add it to child table so user can
-		map it with correct ERPNext warehouse."""
+		map it with correct ERPNext warehouse. Preserves existing warehouse links."""
 
+		existing = {
+			cstr(wh_map.shopify_location_id): wh_map.erpnext_warehouse
+			for wh_map in (self.shopify_warehouse_mapping or [])
+			if wh_map.shopify_location_id
+		}
 		self.shopify_warehouse_mapping = []
 		for locations in PaginatedIterator(Location.find()):
 			for location in locations:
-				self.append(
-					"shopify_warehouse_mapping",
-					{"shopify_location_id": location.id, "shopify_location_name": location.name},
-				)
+				location_id = cstr(location.id)
+				row = {
+					"shopify_location_id": location_id,
+					"shopify_location_name": location.name,
+				}
+				if location_id in existing and existing[location_id]:
+					row["erpnext_warehouse"] = existing[location_id]
+					row["company"] = frappe.db.get_value("Warehouse", existing[location_id], "company")
+				self.append("shopify_warehouse_mapping", row)
 
 	def get_erpnext_warehouses(self) -> list[ERPNextWarehouse]:
 		return [wh_map.erpnext_warehouse for wh_map in self.shopify_warehouse_mapping]

@@ -127,9 +127,7 @@ def create_return_delivery_note_from_refund(refund, setting):
 
 
 def create_return_delivery_notes(order_id, return_id, qty_by_item, setting, order_number=None, posting_date=None):
-	warehouse = setting.shopify_returns_warehouse
-	if not warehouse:
-		frappe.throw("Shopify Returns Warehouse is not configured")
+	from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
 
 	# Already processed under this return id (any DN)
 	if frappe.db.exists("Delivery Note", {RETURN_ID_FIELD: return_id, "docstatus": 1, "is_return": 1}):
@@ -143,6 +141,14 @@ def create_return_delivery_notes(order_id, return_id, qty_by_item, setting, orde
 	)
 	if not source_dns:
 		frappe.throw(f"Delivery Note not found for Shopify order {order_id}")
+
+	source_dn = frappe.get_doc("Delivery Note", source_dns[0])
+	company_config = get_company_config_for_transaction(source_dn, setting)
+	warehouse = company_config.returns_warehouse
+	if not warehouse:
+		frappe.throw(
+			f"Shopify Returns Warehouse is not configured for company {company_config.company}"
+		)
 
 	remaining = defaultdict(float, qty_by_item)
 	posting_date = posting_date or nowdate()
@@ -186,7 +192,7 @@ def create_return_delivery_notes(order_id, return_id, qty_by_item, setting, orde
 				ORDER_NUMBER_FIELD,
 				frappe.db.get_value("Delivery Note", dn_name, ORDER_NUMBER_FIELD),
 			)
-		dn_return.naming_series = setting.delivery_note_series or dn_return.naming_series
+		dn_return.naming_series = company_config.delivery_note_series or dn_return.naming_series
 		dn_return.set_posting_time = 1
 		dn_return.posting_date = posting_date
 		dn_return.flags.ignore_mandatory = True

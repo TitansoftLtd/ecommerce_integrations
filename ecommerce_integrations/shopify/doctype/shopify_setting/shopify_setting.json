@@ -24,30 +24,30 @@
   "column_break_14",
   "customer_group",
   "company_dependent_settings_section",
+  "company_config",
+  "legacy_company_section",
   "company",
   "cash_bank_account",
-  "column_break_19",
   "cost_center",
-  "section_break_25",
+  "warehouse",
+  "shopify_returns_warehouse",
   "sales_order_series",
   "delivery_note_series",
   "sales_invoice_series",
+  "default_sales_tax_account",
+  "default_shipping_charges_account",
+  "section_break_25",
   "shipping_item",
   "column_break_27",
   "sync_delivery_note",
   "sync_sales_invoice",
   "sync_shopify_refunds",
   "sync_shopify_returns",
-  "shopify_returns_warehouse",
   "add_shipping_as_item",
   "consolidate_taxes",
   "section_break_22",
   "html_16",
   "taxes",
-  "section_break_zeoy",
-  "default_sales_tax_account",
-  "column_break_qibo",
-  "default_shipping_charges_account",
   "erpnext_to_shopify_sync_section",
   "upload_erpnext_items",
   "update_shopify_item_on_update",
@@ -55,7 +55,6 @@
   "sync_new_item_as_active",
   "upload_variants_as_items",
   "inventory_sync_section",
-  "warehouse",
   "update_erpnext_stock_levels_to_shopify",
   "inventory_sync_frequency",
   "fetch_shopify_locations",
@@ -178,14 +177,6 @@
    "options": "Customer Group"
   },
   {
-   "description": "If individual warehouse are not mapped, the default warehouse is considered for transactions.",
-   "fieldname": "warehouse",
-   "fieldtype": "Link",
-   "label": "Default warehouse",
-   "mandatory_depends_on": "eval:doc.enable_shopify",
-   "options": "Warehouse"
-  },
-  {
    "description": "If Shopify does not have a customer in the order, then while syncing the orders, the system will consider the default customer for the order",
    "fieldname": "default_customer",
    "fieldtype": "Link",
@@ -199,43 +190,98 @@
   {
    "fieldname": "company_dependent_settings_section",
    "fieldtype": "Section Break",
-   "label": "Company Dependent settings"
+   "label": "Company Configuration"
+  },
+  {
+   "description": "One row per company that sells or fulfills Shopify orders. Mark exactly one Primary for fallback when fulfillment location is not yet known.",
+   "fieldname": "company_config",
+   "fieldtype": "Table",
+   "label": "Shopify Company Config",
+   "mandatory_depends_on": "eval:doc.enable_shopify",
+   "options": "Shopify Company Config"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "legacy_company_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Legacy Company Fields"
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Company",
-   "mandatory_depends_on": "eval:doc.enable_shopify",
    "options": "Company"
   },
   {
    "fieldname": "cash_bank_account",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Cash/Bank Account",
-   "mandatory_depends_on": "eval:doc.enable_shopify",
    "options": "Account"
-  },
-  {
-   "fieldname": "column_break_19",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Cost Center",
-   "mandatory_depends_on": "eval:doc.enable_shopify",
    "options": "Cost Center"
+  },
+  {
+   "description": "If individual warehouse are not mapped, the default warehouse is considered for transactions.",
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Default warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "description": "Returned stock is received into this warehouse (e.g. QC). Shopify restock location is ignored.",
+   "fieldname": "shopify_returns_warehouse",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Shopify Returns Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "sales_order_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Sales Order Series"
+  },
+  {
+   "fieldname": "delivery_note_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Delivery Note Series"
+  },
+  {
+   "fieldname": "sales_invoice_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Sales Invoice Series"
+  },
+  {
+   "description": "When no sales tax mapping is found this tax account will be used as the default account. This is only applied for Sales Tax. Any shipping related charges still need to be mapped separately.",
+   "fieldname": "default_sales_tax_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Default Sales Tax Account",
+   "options": "Account"
+  },
+  {
+   "description": "When no shipping charge account mapping is found this account will be used as the default account.",
+   "fieldname": "default_shipping_charges_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Default Shipping Charges Account",
+   "options": "Account"
   },
   {
    "fieldname": "section_break_25",
    "fieldtype": "Section Break",
    "label": "Order Sync Settings"
-  },
-  {
-   "fieldname": "sales_order_series",
-   "fieldtype": "Select",
-   "label": "Sales Order Series",
-   "mandatory_depends_on": "eval:doc.enable_shopify"
   },
   {
    "fieldname": "column_break_27",
@@ -248,24 +294,10 @@
    "label": "Import Delivery Notes from Shopify on Shipment"
   },
   {
-   "depends_on": "eval:doc.sync_delivery_note==1",
-   "fieldname": "delivery_note_series",
-   "fieldtype": "Select",
-   "label": "Delivery Note Series",
-   "mandatory_depends_on": "eval:doc.sync_delivery_note"
-  },
-  {
    "default": "0",
    "fieldname": "sync_sales_invoice",
    "fieldtype": "Check",
    "label": "Import Sales Invoice from Shopify if Payment is marked"
-  },
-  {
-   "depends_on": "eval:doc.sync_sales_invoice==1",
-   "fieldname": "sales_invoice_series",
-   "fieldtype": "Select",
-   "label": "Sales Invoice Series",
-   "mandatory_depends_on": "eval:doc.sync_sales_invoice"
   },
   {
    "default": "0",
@@ -280,22 +312,13 @@
    "label": "Import Returns from Shopify as Return Delivery Notes"
   },
   {
-   "depends_on": "eval:doc.sync_shopify_returns==1",
-   "description": "Returned stock is received into this warehouse (e.g. QC). Shopify restock location is ignored.",
-   "fieldname": "shopify_returns_warehouse",
-   "fieldtype": "Link",
-   "label": "Shopify Returns Warehouse",
-   "mandatory_depends_on": "eval:doc.sync_shopify_returns",
-   "options": "Warehouse"
-  },
-  {
    "fieldname": "section_break_22",
    "fieldtype": "Section Break"
   },
   {
    "fieldname": "html_16",
    "fieldtype": "HTML",
-   "options": "Map Shopify Taxes / Shipping Charges to ERPNext Account"
+   "options": "Map Shopify Taxes / Shipping Charges to ERPNext Account (set Company on each row)"
   },
   {
    "fieldname": "taxes",
@@ -444,35 +467,12 @@
    "fieldname": "consolidate_taxes",
    "fieldtype": "Check",
    "label": "Consolidate Taxes in Order"
-  },
-  {
-   "description": "When no sales tax mapping is found this tax account will be used as the default account. This is only applied for Sales Tax. Any shipping related charges still need to be mapped separately.",
-   "fieldname": "default_sales_tax_account",
-   "fieldtype": "Link",
-   "label": "Default Sales Tax Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "section_break_zeoy",
-   "fieldtype": "Section Break",
-   "hide_border": 1
-  },
-  {
-   "fieldname": "column_break_qibo",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "When no shipping charge account mapping is found this account will be used as the default account.",
-   "fieldname": "default_shipping_charges_account",
-   "fieldtype": "Link",
-   "label": "Default Shipping Charges Account",
-   "options": "Account"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-01-13 14:36:33.238183",
+ "modified": "2026-04-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "shopify",
  "name": "Shopify Setting",

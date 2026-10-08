@@ -72,12 +72,17 @@ def create_credit_note_from_refund(refund, setting, refund_id, order_id):
 	qty_by_item = get_refund_qty_by_item_code(refund)
 	shipping_refund_amount = get_shipping_refund_amount(refund)
 
+	from ecommerce_integrations.shopify.company_config import get_company_config
+
+	si_company = frappe.db.get_value("Sales Invoice", si_name, "company")
+	company_config = get_company_config(si_company, setting)
+
 	credit_note = make_sales_return(si_name)
 	credit_note.update_stock = 0
 	credit_note.set(REFUND_ID_FIELD, refund_id)
 	credit_note.set(ORDER_ID_FIELD, order_id)
 	credit_note.set(ORDER_NUMBER_FIELD, frappe.db.get_value("Sales Invoice", si_name, ORDER_NUMBER_FIELD))
-	credit_note.naming_series = setting.sales_invoice_series or credit_note.naming_series
+	credit_note.naming_series = company_config.sales_invoice_series or credit_note.naming_series
 	credit_note.set_posting_time = 1
 	credit_note.posting_date = getdate(refund.get("created_at")) or nowdate()
 	credit_note.flags.ignore_pricing_rule = True
@@ -93,7 +98,9 @@ def create_credit_note_from_refund(refund, setting, refund_id, order_id):
 
 	refund_amount = get_refund_transaction_amount(refund)
 	if refund_amount > 0:
-		make_payment_entry_against_credit_note(credit_note, setting, refund_amount, refund_id)
+		make_payment_entry_against_credit_note(
+			credit_note, setting, refund_amount, refund_id, company_config=company_config
+		)
 
 
 def get_refund_qty_by_item_code(refund) -> dict[str, float]:
@@ -199,14 +206,19 @@ def _reset_item_wise_tax_details(credit_note):
 	credit_note.update_item_wise_tax_details = True
 
 
-def make_payment_entry_against_credit_note(credit_note, setting, refund_amount, refund_id):
+def make_payment_entry_against_credit_note(
+	credit_note, setting, refund_amount, refund_id, company_config=None
+):
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
 
 	# Reload so outstanding/grand_total match DB after submit
 	credit_note.reload()
+	company_config = company_config or get_company_config_for_transaction(credit_note, setting)
 
 	payment_entry = get_payment_entry(
-		credit_note.doctype, credit_note.name, bank_account=setting.cash_bank_account
+		credit_note.doctype, credit_note.name, bank_account=company_config.cash_bank_account
 	)
 	payment_entry.flags.ignore_mandatory = True
 	payment_entry.reference_no = cstr(refund_id)

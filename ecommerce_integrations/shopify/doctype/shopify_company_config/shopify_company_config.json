@@ -1,0 +1,136 @@
+{
+ "actions": [],
+ "creation": "2026-04-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "is_primary",
+  "column_break_cfg",
+  "default_warehouse",
+  "returns_warehouse",
+  "accounts_section",
+  "cash_bank_account",
+  "cost_center",
+  "column_break_acc",
+  "default_sales_tax_account",
+  "default_shipping_charges_account",
+  "naming_section",
+  "sales_order_series",
+  "delivery_note_series",
+  "column_break_series",
+  "sales_invoice_series"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_primary",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Primary"
+  },
+  {
+   "fieldname": "column_break_cfg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Fallback warehouse when a Shopify location is not mapped.",
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Default Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "description": "Returned stock is received into this warehouse. Shopify restock location is ignored.",
+   "fieldname": "returns_warehouse",
+   "fieldtype": "Link",
+   "label": "Returns Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "cash_bank_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Cash/Bank Account",
+   "options": "Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_acc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_sales_tax_account",
+   "fieldtype": "Link",
+   "label": "Default Sales Tax Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_shipping_charges_account",
+   "fieldtype": "Link",
+   "label": "Default Shipping Charges Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "naming_section",
+   "fieldtype": "Section Break",
+   "label": "Naming Series"
+  },
+  {
+   "fieldname": "sales_order_series",
+   "fieldtype": "Select",
+   "label": "Sales Order Series",
+   "reqd": 1
+  },
+  {
+   "fieldname": "delivery_note_series",
+   "fieldtype": "Select",
+   "label": "Delivery Note Series"
+  },
+  {
+   "fieldname": "column_break_series",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_invoice_series",
+   "fieldtype": "Select",
+   "label": "Sales Invoice Series"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "shopify",
+ "name": "Shopify Company Config",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
