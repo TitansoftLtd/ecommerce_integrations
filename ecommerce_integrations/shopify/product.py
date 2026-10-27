@@ -65,7 +65,10 @@ class ShopifyProduct:
 	def _make_item(self, product_dict):
 		_add_weight_details(product_dict)
 
-		warehouse = self.setting.warehouse
+		from ecommerce_integrations.shopify.company_config import get_primary_company_config
+
+		primary = get_primary_company_config(self.setting)
+		warehouse = primary.default_warehouse if primary else self.setting.warehouse
 
 		if _has_variants(product_dict):
 			self.has_variants = 1

@@ -2,6 +2,7 @@ import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 from frappe.utils import cint, cstr, getdate, nowdate
 
+from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
 from ecommerce_integrations.shopify.constants import (
 	ORDER_ID_FIELD,
 	ORDER_NUMBER_FIELD,
@@ -30,13 +31,14 @@ def prepare_sales_invoice(payload, request_id=None):
 		create_shopify_log(status="Error", exception=e, rollback=True)
 
 
-def create_sales_invoice(shopify_order, setting, so):
+def create_sales_invoice(shopify_order, setting, so, company_config=None):
 	if (
 		not frappe.db.get_value("Sales Invoice", {ORDER_ID_FIELD: shopify_order.get("id")}, "name")
 		and so.docstatus == 1
 		and not so.per_billed
 		and cint(setting.sync_sales_invoice)
 	):
+		company_config = company_config or get_company_config_for_transaction(so, setting)
 		posting_date = getdate(shopify_order.get("created_at")) or nowdate()
 
 		sales_invoice = make_sales_invoice(so.name, ignore_permissions=True)
@@ -45,13 +47,15 @@ def create_sales_invoice(shopify_order, setting, so):
 		sales_invoice.set_posting_time = 1
 		sales_invoice.posting_date = posting_date
 		sales_invoice.due_date = posting_date
-		sales_invoice.naming_series = setting.sales_invoice_series or "SI-Shopify-"
+		sales_invoice.naming_series = company_config.sales_invoice_series or "SI-Shopify-"
 		sales_invoice.flags.ignore_mandatory = True
-		set_cost_center(sales_invoice.items, setting.cost_center)
+		set_cost_center(sales_invoice.items, company_config.cost_center)
 		sales_invoice.insert(ignore_mandatory=True)
 		sales_invoice.submit()
 		if sales_invoice.grand_total > 0:
-			make_payament_entry_against_sales_invoice(sales_invoice, setting, posting_date)
+			make_payament_entry_against_sales_invoice(
+				sales_invoice, setting, posting_date, company_config=company_config
+			)
 
 		if shopify_order.get("note"):
 			sales_invoice.add_comment(text=f"Order Note: {shopify_order.get('note')}")
@@ -62,10 +66,13 @@ def set_cost_center(items, cost_center):
 		item.cost_center = cost_center
 
 
-def make_payament_entry_against_sales_invoice(doc, setting, posting_date=None):
+def make_payament_entry_against_sales_invoice(doc, setting, posting_date=None, company_config=None):
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 
-	payment_entry = get_payment_entry(doc.doctype, doc.name, bank_account=setting.cash_bank_account)
+	company_config = company_config or get_company_config_for_transaction(doc, setting)
+	payment_entry = get_payment_entry(
+		doc.doctype, doc.name, bank_account=company_config.cash_bank_account
+	)
 	payment_entry.flags.ignore_mandatory = True
 	payment_entry.reference_no = doc.name
 	payment_entry.posting_date = posting_date or nowdate()

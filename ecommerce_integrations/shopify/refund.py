@@ -14,6 +14,13 @@ from ecommerce_integrations.shopify.constants import (
 	REFUND_ID_FIELD,
 	SETTING_DOCTYPE,
 )
+from ecommerce_integrations.shopify.money import (
+	MoneySide,
+	get_company_currency,
+	money_amount,
+	normalize_currency,
+	resolve_money_side,
+)
 from ecommerce_integrations.shopify.product import get_item_code
 from ecommerce_integrations.shopify.utils import create_shopify_log
 
@@ -70,14 +77,20 @@ def create_credit_note_from_refund(refund, setting, refund_id, order_id):
 		frappe.throw(f"Sales Invoice not found for Shopify order {order_id}")
 
 	qty_by_item = get_refund_qty_by_item_code(refund)
-	shipping_refund_amount = get_shipping_refund_amount(refund)
+
+	from ecommerce_integrations.shopify.company_config import get_company_config
+
+	si_company = frappe.db.get_value("Sales Invoice", si_name, "company")
+	company_config = get_company_config(si_company, setting)
+	money_side = _resolve_refund_money_side(refund, si_name, si_company)
+	shipping_refund_amount = get_shipping_refund_amount(refund, money_side=money_side)
 
 	credit_note = make_sales_return(si_name)
 	credit_note.update_stock = 0
 	credit_note.set(REFUND_ID_FIELD, refund_id)
 	credit_note.set(ORDER_ID_FIELD, order_id)
 	credit_note.set(ORDER_NUMBER_FIELD, frappe.db.get_value("Sales Invoice", si_name, ORDER_NUMBER_FIELD))
-	credit_note.naming_series = setting.sales_invoice_series or credit_note.naming_series
+	credit_note.naming_series = company_config.sales_invoice_series or credit_note.naming_series
 	credit_note.set_posting_time = 1
 	credit_note.posting_date = getdate(refund.get("created_at")) or nowdate()
 	credit_note.flags.ignore_pricing_rule = True
@@ -91,9 +104,30 @@ def create_credit_note_from_refund(refund, setting, refund_id, order_id):
 	credit_note.insert(ignore_mandatory=True)
 	credit_note.submit()
 
-	refund_amount = get_refund_transaction_amount(refund)
+	refund_amount = get_refund_transaction_amount(
+		refund, money_side=money_side, company_currency=get_company_currency(si_company)
+	)
 	if refund_amount > 0:
-		make_payment_entry_against_credit_note(credit_note, setting, refund_amount, refund_id)
+		make_payment_entry_against_credit_note(
+			credit_note, setting, refund_amount, refund_id, company_config=company_config
+		)
+
+
+def _resolve_refund_money_side(refund, si_name: str, company: str) -> MoneySide:
+	"""Resolve shop vs presentment using refund currencies; fall back to SI currency as presentment."""
+	order_like = {
+		"currency": refund.get("currency"),
+		"presentment_currency": refund.get("presentment_currency"),
+	}
+	if not order_like["presentment_currency"]:
+		order_like["presentment_currency"] = frappe.db.get_value("Sales Invoice", si_name, "currency")
+	if not order_like["currency"]:
+		# Prefer shop currency from a refund transaction when top-level is missing
+		for txn in refund.get("transactions") or []:
+			if txn.get("currency"):
+				order_like["currency"] = txn.get("currency")
+				break
+	return resolve_money_side(order_like, company)
 
 
 def get_refund_qty_by_item_code(refund) -> dict[str, float]:
@@ -106,21 +140,46 @@ def get_refund_qty_by_item_code(refund) -> dict[str, float]:
 	return dict(qty_map)
 
 
-def get_shipping_refund_amount(refund) -> float:
+def get_shipping_refund_amount(refund, money_side: MoneySide = "shop") -> float:
 	total = 0.0
 	for row in refund.get("refund_shipping_lines") or []:
-		amount = row.get("amount")
-		if amount is None and isinstance(row.get("subtotal_amount_set"), dict):
-			amount = (row["subtotal_amount_set"].get("shop_money") or {}).get("amount")
-		total += flt(amount)
+		money_set = row.get("subtotal_amount_set") or row.get("amount_set")
+		total += money_amount(
+			money_set,
+			money_side,
+			fallback=row.get("amount"),
+			field_label="subtotal_amount_set",
+		)
 	return total
 
 
-def get_refund_transaction_amount(refund) -> float:
+def get_refund_transaction_amount(
+	refund, money_side: MoneySide = "shop", company_currency: str | None = None
+) -> float:
 	total = 0.0
 	for txn in refund.get("transactions") or []:
-		if txn.get("kind") == "refund" and txn.get("status") == "success":
+		if txn.get("kind") != "refund" or txn.get("status") != "success":
+			continue
+		if isinstance(txn.get("amount_set"), dict):
+			total += money_amount(
+				txn.get("amount_set"),
+				money_side,
+				fallback=txn.get("amount"),
+				field_label="amount_set",
+			)
+			continue
+		# Bare ``amount`` is denominated in ``transaction.currency``.
+		if money_side == "shop" or (
+			company_currency and normalize_currency(txn.get("currency")) == company_currency
+		):
 			total += flt(txn.get("amount"))
+		else:
+			total += money_amount(
+				None,
+				money_side,
+				fallback=None,
+				field_label="transaction.amount_set",
+			)
 	return total
 
 
@@ -199,14 +258,19 @@ def _reset_item_wise_tax_details(credit_note):
 	credit_note.update_item_wise_tax_details = True
 
 
-def make_payment_entry_against_credit_note(credit_note, setting, refund_amount, refund_id):
+def make_payment_entry_against_credit_note(
+	credit_note, setting, refund_amount, refund_id, company_config=None
+):
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
 
 	# Reload so outstanding/grand_total match DB after submit
 	credit_note.reload()
+	company_config = company_config or get_company_config_for_transaction(credit_note, setting)
 
 	payment_entry = get_payment_entry(
-		credit_note.doctype, credit_note.name, bank_account=setting.cash_bank_account
+		credit_note.doctype, credit_note.name, bank_account=company_config.cash_bank_account
 	)
 	payment_entry.flags.ignore_mandatory = True
 	payment_entry.reference_no = cstr(refund_id)

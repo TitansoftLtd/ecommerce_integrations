@@ -2,8 +2,10 @@ from copy import deepcopy
 
 import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
+from frappe import _
 from frappe.utils import cint, cstr, getdate
 
+from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
 from ecommerce_integrations.shopify.constants import (
 	FULLFILLMENT_ID_FIELD,
 	ORDER_ID_FIELD,
@@ -32,24 +34,32 @@ def prepare_delivery_note(payload, request_id=None):
 		create_shopify_log(status="Error", exception=e, rollback=True)
 
 
-def create_delivery_note(shopify_order, setting, so):
+def create_delivery_note(shopify_order, setting, so, company_config=None):
 	if not cint(setting.sync_delivery_note):
 		return
+
+	company_config = company_config or get_company_config_for_transaction(so, setting)
 
 	for fulfillment in shopify_order.get("fulfillments"):
 		if (
 			not frappe.db.get_value("Delivery Note", {FULLFILLMENT_ID_FIELD: fulfillment.get("id")}, "name")
 			and so.docstatus == 1
 		):
+			warehouse = _resolve_fulfillment_warehouse(
+				fulfillment.get("location_id"), company_config, setting, so.company
+			)
+			if warehouse is None:
+				continue
+
 			dn = make_delivery_note(so.name)
 			setattr(dn, ORDER_ID_FIELD, fulfillment.get("order_id"))
 			setattr(dn, ORDER_NUMBER_FIELD, shopify_order.get("name"))
 			setattr(dn, FULLFILLMENT_ID_FIELD, fulfillment.get("id"))
 			dn.set_posting_time = 1
 			dn.posting_date = getdate(fulfillment.get("created_at"))
-			dn.naming_series = setting.delivery_note_series or "DN-Shopify-"
+			dn.naming_series = company_config.delivery_note_series or "DN-Shopify-"
 			dn.items = get_fulfillment_items(
-				dn.items, fulfillment.get("line_items"), fulfillment.get("location_id")
+				dn.items, fulfillment.get("line_items"), warehouse=warehouse
 			)
 			dn.flags.ignore_mandatory = True
 			dn.save()
@@ -59,15 +69,37 @@ def create_delivery_note(shopify_order, setting, so):
 				dn.add_comment(text=f"Order Note: {shopify_order.get('note')}")
 
 
-def get_fulfillment_items(dn_items, fulfillment_items, location_id=None):
+def _resolve_fulfillment_warehouse(location_id, company_config, setting, so_company):
+	wh_map = setting.get_integration_to_erpnext_wh_mapping()
+	warehouse = wh_map.get(str(location_id)) or company_config.default_warehouse
+	wh_company = frappe.db.get_value("Warehouse", warehouse, "company")
+	if wh_company and wh_company != so_company:
+		create_shopify_log(
+			status="Error",
+			message=_(
+				"Skipped Delivery Note: fulfillment warehouse {0} belongs to company {1}, "
+				"but Sales Order company is {2}."
+			).format(warehouse, wh_company, so_company),
+		)
+		return None
+	return warehouse
+
+
+def get_fulfillment_items(dn_items, fulfillment_items, location_id=None, warehouse=None):
 	# local import to avoid circular imports
 	from ecommerce_integrations.shopify.product import get_item_code
 
 	fulfillment_items = deepcopy(fulfillment_items)
 
-	setting = frappe.get_cached_doc(SETTING_DOCTYPE)
-	wh_map = setting.get_integration_to_erpnext_wh_mapping()
-	warehouse = wh_map.get(str(location_id)) or setting.warehouse
+	if warehouse is None:
+		setting = frappe.get_cached_doc(SETTING_DOCTYPE)
+		wh_map = setting.get_integration_to_erpnext_wh_mapping()
+		from ecommerce_integrations.shopify.company_config import get_primary_company_config
+
+		primary = get_primary_company_config(setting)
+		warehouse = wh_map.get(str(location_id)) or (
+			primary.default_warehouse if primary else setting.warehouse
+		)
 
 	final_items = []
 

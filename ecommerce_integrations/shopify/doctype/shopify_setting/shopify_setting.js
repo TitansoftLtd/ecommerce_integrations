@@ -10,6 +10,7 @@ frappe.ui.form.on("Shopify Setting", {
 			callback: function (r) {
 				$.each(r.message, (key, value) => {
 					set_field_options(key, value);
+					frm.fields_dict.company_config.grid.update_docfield_property(key, "options", value);
 				});
 			},
 		});
@@ -55,63 +56,114 @@ frappe.ui.form.on("Shopify Setting", {
 	},
 
 	setup_queries: function (frm) {
-		const warehouse_query = () => {
+		const configured_companies = () =>
+			(frm.doc.company_config || []).map((row) => row.company).filter(Boolean);
+
+		frm.set_query("erpnext_warehouse", "shopify_warehouse_mapping", () => {
+			const companies = configured_companies();
+			const filters = {
+				is_group: 0,
+				disabled: 0,
+			};
+			if (companies.length === 1) {
+				filters.company = companies[0];
+			} else if (companies.length > 1) {
+				filters.company = ["in", companies];
+			}
+			return { filters };
+		});
+
+		frm.set_query("default_warehouse", "company_config", (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
 			return {
 				filters: {
-					company: frm.doc.company,
+					company: row.company,
 					is_group: 0,
 					disabled: 0,
 				},
 			};
-		};
-		frm.set_query("warehouse", warehouse_query);
-		frm.set_query("shopify_returns_warehouse", warehouse_query);
-		frm.set_query(
-			"erpnext_warehouse",
-			"shopify_warehouse_mapping",
-			warehouse_query,
-		);
-
-		frm.set_query("price_list", () => {
+		});
+		frm.set_query("returns_warehouse", "company_config", (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
 			return {
 				filters: {
-					selling: 1,
+					company: row.company,
+					is_group: 0,
+					disabled: 0,
 				},
 			};
 		});
-
-		frm.set_query("cost_center", () => {
+		frm.set_query("cost_center", "company_config", (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
 			return {
 				filters: {
-					company: frm.doc.company,
+					company: row.company,
 					is_group: "No",
 				},
 			};
 		});
-
-		frm.set_query("cash_bank_account", () => {
+		frm.set_query("cash_bank_account", "company_config", (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
 			return {
 				filters: [
 					["Account", "account_type", "in", ["Cash", "Bank"]],
 					["Account", "root_type", "=", "Asset"],
 					["Account", "is_group", "=", 0],
-					["Account", "company", "=", frm.doc.company],
+					["Account", "company", "=", row.company],
 				],
 			};
 		});
 
-		const tax_query = () => {
+		const company_tax_query = (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
 			return {
 				query: "erpnext.controllers.queries.tax_account_query",
 				filters: {
 					account_type: ["Tax", "Chargeable", "Expense Account"],
-					company: frm.doc.company,
+					company: row.company,
 				},
 			};
 		};
 
-		frm.set_query("tax_account", "taxes", tax_query);
-		frm.set_query("default_sales_tax_account", tax_query);
-		frm.set_query("default_shipping_charges_account", tax_query);
+		frm.set_query("default_sales_tax_account", "company_config", company_tax_query);
+		frm.set_query("default_shipping_charges_account", "company_config", company_tax_query);
+
+		frm.set_query("company", "taxes", () => {
+			const companies = configured_companies();
+			if (companies.length) {
+				return { filters: { name: ["in", companies] } };
+			}
+			return {};
+		});
+
+		frm.set_query("tax_account", "taxes", (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn];
+			return {
+				query: "erpnext.controllers.queries.tax_account_query",
+				filters: {
+					account_type: ["Tax", "Chargeable", "Expense Account"],
+					company: row.company,
+				},
+			};
+		});
+	},
+});
+
+frappe.ui.form.on("Shopify Company Config", {
+	company: function (frm, cdt, cdn) {
+		frm.trigger("setup_queries");
+	},
+});
+
+frappe.ui.form.on("Shopify Warehouse Mapping", {
+	erpnext_warehouse: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row.erpnext_warehouse) {
+			frappe.model.set_value(cdt, cdn, "company", "");
+			return;
+		}
+		frappe.db.get_value("Warehouse", row.erpnext_warehouse, "company", (r) => {
+			frappe.model.set_value(cdt, cdn, "company", r.company || "");
+		});
 	},
 });
