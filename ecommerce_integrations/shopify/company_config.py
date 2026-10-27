@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import json
+import time
 from typing import TYPE_CHECKING
 
 import frappe
@@ -15,6 +15,11 @@ from ecommerce_integrations.shopify.constants import SETTING_DOCTYPE
 
 if TYPE_CHECKING:
 	from frappe.model.document import Document
+
+# Shopify assigns FulfillmentOrders asynchronously after order create.
+# Wait briefly so we do not fall back to Primary and create the SO in the wrong company.
+FO_LOCATION_FETCH_ATTEMPTS = 5
+FO_LOCATION_FETCH_DELAY_SECONDS = 1.0
 
 
 class CrossCompanyOrderError(frappe.ValidationError):
@@ -93,6 +98,13 @@ def fetch_fulfillment_order_location_ids(order_id) -> list[str]:
 	"""Fetch assigned_location_id from Shopify FulfillmentOrders for an order.
 
 	Returns empty list on failure / empty response so callers can fall back to Primary.
+
+	Uses ``shopify.FulfillmentOrders.find`` (authenticated resource path). Raw
+	``connection.get("orders/...")`` hits the storefront; absolute Admin paths via
+	``connection.get`` omit the access-token header and 401.
+
+	Requires app scope ``read_merchant_managed_fulfillment_orders`` (not only
+	``read_assigned_fulfillment_orders``); without it Shopify returns an empty list.
 	"""
 	from ecommerce_integrations.shopify.connection import temp_shopify_session
 
@@ -102,13 +114,10 @@ def fetch_fulfillment_order_location_ids(order_id) -> list[str]:
 
 		locations: list[str] = []
 		try:
-			response = shopify.ShopifyResource.connection.get(f"orders/{order_id}/fulfillment_orders")
-			body = response.body if hasattr(response, "body") else response
-			if isinstance(body, bytes | bytearray):
-				body = body.decode("utf-8")
-			payload = json.loads(body) if isinstance(body, str) else body
-			for fo in (payload or {}).get("fulfillment_orders") or []:
-				assigned = fo.get("assigned_location_id")
+			for fo in shopify.FulfillmentOrders.find(order_id=order_id) or []:
+				assigned = getattr(fo, "assigned_location_id", None)
+				if assigned is None and hasattr(fo, "to_dict"):
+					assigned = (fo.to_dict() or {}).get("assigned_location_id")
 				if assigned is not None:
 					locations.append(str(assigned))
 		except Exception:
@@ -126,6 +135,17 @@ def fetch_fulfillment_order_location_ids(order_id) -> list[str]:
 			message=frappe.get_traceback(),
 		)
 		return []
+
+
+def fetch_fulfillment_order_location_ids_with_retry(order_id) -> list[str]:
+	"""Retry FO fetch briefly while Shopify finishes routing after orders/create."""
+	for attempt in range(FO_LOCATION_FETCH_ATTEMPTS):
+		locations = fetch_fulfillment_order_location_ids(order_id)
+		if locations:
+			return locations
+		if attempt < FO_LOCATION_FETCH_ATTEMPTS - 1:
+			time.sleep(FO_LOCATION_FETCH_DELAY_SECONDS)
+	return []
 
 
 def map_locations_to_companies(location_ids: list[str], setting: Document | None = None) -> set[str]:
@@ -146,7 +166,7 @@ def resolve_company_config_for_order(shopify_order: dict, setting: Document | No
 	"""Resolve company config for Sales Order create.
 
 	1. Fulfillment location_ids on payload
-	2. Else FulfillmentOrders assigned_location_id
+	2. Else FulfillmentOrders assigned_location_id (with short retry for routing lag)
 	3. Map to companies via warehouse mapping
 	4. 0 companies → Primary; 1 → that config; 2+ → raise CrossCompanyOrderError
 	"""
@@ -156,7 +176,7 @@ def resolve_company_config_for_order(shopify_order: dict, setting: Document | No
 	if not location_ids:
 		order_id = shopify_order.get("id")
 		if order_id:
-			location_ids = fetch_fulfillment_order_location_ids(order_id)
+			location_ids = fetch_fulfillment_order_location_ids_with_retry(order_id)
 
 	companies = map_locations_to_companies(location_ids, setting) if location_ids else set()
 

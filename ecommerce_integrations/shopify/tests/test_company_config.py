@@ -7,6 +7,7 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from ecommerce_integrations.shopify.company_config import (
+	FO_LOCATION_FETCH_ATTEMPTS,
 	CrossCompanyOrderError,
 	collect_order_location_ids,
 	default_line_warehouse,
@@ -51,14 +52,38 @@ def _fake_setting():
 class TestShopifyCompanyConfigResolver(UnitTestCase):
 	def test_primary_fallback_when_no_locations(self):
 		setting = _fake_setting()
-		with patch(
-			"ecommerce_integrations.shopify.company_config.fetch_fulfillment_order_location_ids",
-			return_value=[],
+		with (
+			patch(
+				"ecommerce_integrations.shopify.company_config.fetch_fulfillment_order_location_ids",
+				return_value=[],
+			) as fetch,
+			patch("ecommerce_integrations.shopify.company_config.time.sleep") as sleep,
 		):
 			config, locations = resolve_company_config_for_order({"id": 1, "name": "#1001"}, setting)
 		self.assertEqual(config.company, "Co A")
 		self.assertTrue(config.is_primary)
 		self.assertEqual(locations, [])
+		self.assertEqual(fetch.call_count, FO_LOCATION_FETCH_ATTEMPTS)
+		self.assertEqual(sleep.call_count, FO_LOCATION_FETCH_ATTEMPTS - 1)
+
+	def test_resolve_from_late_fulfillment_orders_after_retry(self):
+		setting = _fake_setting()
+		with (
+			patch(
+				"ecommerce_integrations.shopify.company_config.fetch_fulfillment_order_location_ids",
+				side_effect=[[], [], ["222"]],
+			) as fetch,
+			patch("ecommerce_integrations.shopify.company_config.time.sleep") as sleep,
+			patch(
+				"frappe.db.get_value",
+				side_effect=lambda dt, name, field, **kwargs: "Co B" if dt == "Warehouse" else None,
+			),
+		):
+			config, locations = resolve_company_config_for_order({"id": 4, "name": "#1004"}, setting)
+		self.assertEqual(config.company, "Co B")
+		self.assertEqual(locations, ["222"])
+		self.assertEqual(fetch.call_count, 3)
+		self.assertEqual(sleep.call_count, 2)
 
 	def test_resolve_from_fulfillment_location(self):
 		setting = _fake_setting()
@@ -67,14 +92,20 @@ class TestShopifyCompanyConfigResolver(UnitTestCase):
 			"name": "#1002",
 			"fulfillments": [{"location_id": "111"}],
 		}
-		with patch(
-			"frappe.db.get_value",
-			side_effect=lambda dt, name, field, **kwargs: "Co A" if dt == "Warehouse" else None,
+		with (
+			patch(
+				"frappe.db.get_value",
+				side_effect=lambda dt, name, field, **kwargs: "Co A" if dt == "Warehouse" else None,
+			),
+			patch(
+				"ecommerce_integrations.shopify.company_config.fetch_fulfillment_order_location_ids"
+			) as fetch,
 		):
 			config, locations = resolve_company_config_for_order(order, setting)
 		self.assertEqual(config.company, "Co A")
 		self.assertEqual(locations, ["111"])
 		self.assertEqual(default_line_warehouse(config, locations, setting), "WH-A")
+		fetch.assert_not_called()
 
 	def test_cross_company_locations_raise(self):
 		setting = _fake_setting()
