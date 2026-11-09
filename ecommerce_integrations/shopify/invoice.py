@@ -8,6 +8,7 @@ from ecommerce_integrations.shopify.constants import (
 	ORDER_NUMBER_FIELD,
 	SETTING_DOCTYPE,
 )
+from ecommerce_integrations.shopify.payments import create_payment_entries_for_invoice
 from ecommerce_integrations.shopify.utils import create_shopify_log
 
 
@@ -54,7 +55,7 @@ def create_sales_invoice(shopify_order, setting, so, company_config=None):
 		sales_invoice.submit()
 		if sales_invoice.grand_total > 0:
 			make_payament_entry_against_sales_invoice(
-				sales_invoice, setting, posting_date, company_config=company_config
+				sales_invoice, setting, shopify_order, posting_date=posting_date
 			)
 
 		if shopify_order.get("note"):
@@ -66,16 +67,8 @@ def set_cost_center(items, cost_center):
 		item.cost_center = cost_center
 
 
-def make_payament_entry_against_sales_invoice(doc, setting, posting_date=None, company_config=None):
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-
-	company_config = company_config or get_company_config_for_transaction(doc, setting)
-	payment_entry = get_payment_entry(
-		doc.doctype, doc.name, bank_account=company_config.cash_bank_account
+def make_payament_entry_against_sales_invoice(doc, setting, shopify_order, posting_date=None):
+	"""Create one Payment Entry per successful Shopify sale/capture transaction."""
+	create_payment_entries_for_invoice(
+		doc, shopify_order, setting, posting_date=posting_date or nowdate()
 	)
-	payment_entry.flags.ignore_mandatory = True
-	payment_entry.reference_no = doc.name
-	payment_entry.posting_date = posting_date or nowdate()
-	payment_entry.reference_date = posting_date or nowdate()
-	payment_entry.insert(ignore_permissions=True)
-	payment_entry.submit()

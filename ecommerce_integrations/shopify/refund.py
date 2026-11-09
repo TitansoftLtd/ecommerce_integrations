@@ -21,6 +21,7 @@ from ecommerce_integrations.shopify.money import (
 	normalize_currency,
 	resolve_money_side,
 )
+from ecommerce_integrations.shopify.payments import create_refund_payment_entries
 from ecommerce_integrations.shopify.product import get_item_code
 from ecommerce_integrations.shopify.utils import create_shopify_log
 
@@ -109,7 +110,7 @@ def create_credit_note_from_refund(refund, setting, refund_id, order_id):
 	)
 	if refund_amount > 0:
 		make_payment_entry_against_credit_note(
-			credit_note, setting, refund_amount, refund_id, company_config=company_config
+			credit_note, setting, refund, refund_amount, money_side=money_side
 		)
 
 
@@ -259,39 +260,14 @@ def _reset_item_wise_tax_details(credit_note):
 
 
 def make_payment_entry_against_credit_note(
-	credit_note, setting, refund_amount, refund_id, company_config=None
+	credit_note, setting, refund, refund_amount, money_side: MoneySide = "shop"
 ):
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-
-	from ecommerce_integrations.shopify.company_config import get_company_config_for_transaction
-
-	# Reload so outstanding/grand_total match DB after submit
+	"""Pay PE(s) via Mode of Payment from refund transaction gateway(s)."""
 	credit_note.reload()
-	company_config = company_config or get_company_config_for_transaction(credit_note, setting)
-
-	payment_entry = get_payment_entry(
-		credit_note.doctype, credit_note.name, bank_account=company_config.cash_bank_account
+	create_refund_payment_entries(
+		credit_note,
+		refund,
+		setting,
+		refund_amount=refund_amount,
+		money_side=money_side,
 	)
-	payment_entry.flags.ignore_mandatory = True
-	payment_entry.reference_no = cstr(refund_id)
-	payment_entry.posting_date = credit_note.posting_date or nowdate()
-	payment_entry.reference_date = payment_entry.posting_date
-
-	# Credit notes have negative outstanding. Allocation must stay negative (Pay).
-	# Cap absolute pay-out to the Shopify refund transaction total when the CN is larger.
-	outstanding = flt(credit_note.outstanding_amount)
-	if outstanding < 0 and payment_entry.references:
-		shopify_pay = flt(refund_amount)
-		max_pay = abs(outstanding)
-		pay_amount = min(shopify_pay, max_pay) if shopify_pay else max_pay
-		allocated = -pay_amount
-		ref = payment_entry.references[0]
-		ref.allocated_amount = allocated
-		ref.outstanding_amount = outstanding
-		payment_entry.paid_amount = pay_amount
-		payment_entry.received_amount = pay_amount
-		if hasattr(payment_entry, "set_amounts"):
-			payment_entry.set_amounts()
-
-	payment_entry.insert(ignore_permissions=True)
-	payment_entry.submit()

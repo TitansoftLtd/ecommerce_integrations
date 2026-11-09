@@ -30,6 +30,7 @@ from ecommerce_integrations.shopify.constants import (
 	REFUND_ID_FIELD,
 	RETURN_ID_FIELD,
 	SUPPLIER_ID_FIELD,
+	TRANSACTION_ID_FIELD,
 )
 from ecommerce_integrations.shopify.oauth import validate_oauth_credentials
 from ecommerce_integrations.shopify.utils import (
@@ -73,6 +74,7 @@ class ShopifySetting(SettingController):
 		self._validate_warehouse_links()
 		self._validate_returns_settings()
 		self._validate_tax_accounts()
+		self._validate_payment_gateway_map()
 		self._initalize_default_values()
 
 		if self.is_enabled():
@@ -312,6 +314,11 @@ class ShopifySetting(SettingController):
 	def _validate_returns_settings(self):
 		# Per-company returns warehouse is validated in _validate_company_config.
 		return
+
+	def _validate_payment_gateway_map(self):
+		from ecommerce_integrations.shopify.payments import validate_payment_gateway_map
+
+		validate_payment_gateway_map(self)
 
 	def _validate_tax_accounts(self):
 		if not self.is_enabled():
@@ -559,6 +566,16 @@ def setup_custom_fields():
 				label="Shopify Refund Id",
 				fieldtype="Data",
 				insert_after=ORDER_NUMBER_FIELD,
+				read_only=1,
+				print_hide=1,
+			),
+		],
+		"Payment Entry": [
+			dict(
+				fieldname=TRANSACTION_ID_FIELD,
+				label="Shopify Transaction Id",
+				fieldtype="Data",
+				insert_after="reference_no",
 				read_only=1,
 				print_hide=1,
 			),

@@ -25,6 +25,8 @@
   "customer_group",
   "company_dependent_settings_section",
   "company_config",
+  "payment_gateway_section",
+  "payment_gateway_map",
   "legacy_company_section",
   "company",
   "cash_bank_account",
@@ -199,6 +201,18 @@
    "label": "Shopify Company Config",
    "mandatory_depends_on": "eval:doc.enable_shopify",
    "options": "Shopify Company Config"
+  },
+  {
+   "fieldname": "payment_gateway_section",
+   "fieldtype": "Section Break",
+   "label": "Payment Gateways"
+  },
+  {
+   "description": "Map each Shopify transaction.gateway string to an ERPNext Mode of Payment. Bank/cash accounts come from the Mode of Payment per company. Required when Import Sales Invoice is enabled.",
+   "fieldname": "payment_gateway_map",
+   "fieldtype": "Table",
+   "label": "Payment Gateway Map",
+   "options": "Shopify Payment Gateway Map"
   },
   {
    "collapsible": 1,
