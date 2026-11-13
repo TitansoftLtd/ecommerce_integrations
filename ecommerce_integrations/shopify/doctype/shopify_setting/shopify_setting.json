@@ -27,6 +27,10 @@
   "company_config",
   "payment_gateway_section",
   "payment_gateway_map",
+  "catalog_pricing_section",
+  "fetch_shopify_catalogs",
+  "push_catalog_prices",
+  "shopify_catalog_map",
   "legacy_company_section",
   "company",
   "cash_bank_account",
@@ -213,6 +217,28 @@
    "fieldtype": "Table",
    "label": "Payment Gateway Map",
    "options": "Shopify Payment Gateway Map"
+  },
+  {
+   "fieldname": "catalog_pricing_section",
+   "fieldtype": "Section Break",
+   "label": "Catalog Pricing"
+  },
+  {
+   "fieldname": "fetch_shopify_catalogs",
+   "fieldtype": "Button",
+   "label": "Fetch Shopify Catalogs"
+  },
+  {
+   "fieldname": "push_catalog_prices",
+   "fieldtype": "Button",
+   "label": "Push Catalog Prices"
+  },
+  {
+   "description": "Map Shopify market catalogs to ERPNext Price Lists. Fixed prices are pushed from Item Price rows (currency must match). Catalogs without a Shopify price list cannot receive fixed prices.",
+   "fieldname": "shopify_catalog_map",
+   "fieldtype": "Table",
+   "label": "Shopify Catalog Map",
+   "options": "Shopify Catalog Map"
   },
   {
    "collapsible": 1,

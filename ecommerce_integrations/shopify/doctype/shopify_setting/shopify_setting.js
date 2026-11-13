@@ -40,6 +40,32 @@ frappe.ui.form.on("Shopify Setting", {
 		);
 	},
 
+	fetch_shopify_catalogs: function (frm) {
+		frappe.call({
+			doc: frm.doc,
+			method: "update_catalog_table",
+			freeze: true,
+			freeze_message: __("Fetching Shopify catalogs..."),
+			callback: (r) => {
+				if (!r.exc) refresh_field("shopify_catalog_map");
+			},
+		});
+	},
+
+	push_catalog_prices: function (frm) {
+		frappe.confirm(
+			__(
+				"Push Item Prices for all mapped Shopify catalogs now? This runs in the background and does not rewrite base variant prices."
+			),
+			() => {
+				frappe.call({
+					method: "ecommerce_integrations.shopify.catalog_prices.push_catalog_prices_now",
+					freeze: true,
+				});
+			}
+		);
+	},
+
 	refresh: function (frm) {
 		frm.add_custom_button(__("Import Products"), function () {
 			frappe.set_route("shopify-import-products");
@@ -145,6 +171,10 @@ frappe.ui.form.on("Shopify Setting", {
 					company: row.company,
 				},
 			};
+		});
+
+		frm.set_query("erpnext_price_list", "shopify_catalog_map", () => {
+			return { filters: { selling: 1, enabled: 1 } };
 		});
 	},
 });

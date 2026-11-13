@@ -75,6 +75,7 @@ class ShopifySetting(SettingController):
 		self._validate_returns_settings()
 		self._validate_tax_accounts()
 		self._validate_payment_gateway_map()
+		self._validate_catalog_map()
 		self._initalize_default_values()
 
 		if self.is_enabled():
@@ -320,6 +321,11 @@ class ShopifySetting(SettingController):
 
 		validate_payment_gateway_map(self)
 
+	def _validate_catalog_map(self):
+		from ecommerce_integrations.shopify.catalog_prices import validate_catalog_map_currencies
+
+		validate_catalog_map_currencies(self)
+
 	def _validate_tax_accounts(self):
 		if not self.is_enabled():
 			return
@@ -364,6 +370,36 @@ class ShopifySetting(SettingController):
 					row["erpnext_warehouse"] = existing[location_id]
 					row["company"] = frappe.db.get_value("Warehouse", existing[location_id], "company")
 				self.append("shopify_warehouse_mapping", row)
+
+	@frappe.whitelist()
+	def update_catalog_table(self):
+		"""Fetch market/channel catalogs from Shopify; preserve ERPNext price list links."""
+		from ecommerce_integrations.shopify.catalog_prices import fetch_shopify_catalogs
+
+		existing = {}
+		for row in self.shopify_catalog_map or []:
+			if not row.shopify_catalog_id:
+				continue
+			existing[cstr(row.shopify_catalog_id)] = {
+				"erpnext_price_list": row.erpnext_price_list,
+				"enabled": cint(row.enabled),
+			}
+
+		self.shopify_catalog_map = []
+		for catalog in fetch_shopify_catalogs():
+			catalog_id = catalog["shopify_catalog_id"]
+			prev = existing.get(catalog_id) or {}
+			self.append(
+				"shopify_catalog_map",
+				{
+					"shopify_catalog_id": catalog_id,
+					"catalog_title": catalog.get("catalog_title"),
+					"price_list_id": catalog.get("price_list_id"),
+					"currency": catalog.get("currency"),
+					"erpnext_price_list": prev.get("erpnext_price_list"),
+					"enabled": prev.get("enabled", 1),
+				},
+			)
 
 	def get_erpnext_warehouses(self) -> list[ERPNextWarehouse]:
 		return [wh_map.erpnext_warehouse for wh_map in self.shopify_warehouse_mapping]

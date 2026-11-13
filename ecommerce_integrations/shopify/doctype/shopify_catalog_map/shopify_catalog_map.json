@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "creation": "2026-04-13 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "shopify_catalog_id",
+  "catalog_title",
+  "price_list_id",
+  "currency",
+  "erpnext_price_list"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "shopify_catalog_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shopify Catalog ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "catalog_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Catalog Title",
+   "read_only": 1
+  },
+  {
+   "fieldname": "price_list_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shopify Price List ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erpnext_price_list",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ERPNext Price List",
+   "options": "Price List"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shopify",
+ "name": "Shopify Catalog Map",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

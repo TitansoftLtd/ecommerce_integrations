@@ -447,6 +447,8 @@ def upload_erpnext_item(doc, method=None):
 				ecom_item.insert()
 
 		write_upload_log(status=is_successful, product=product, item=item)
+		if is_successful:
+			_push_catalog_prices_after_upload(item.name, setting)
 	elif setting.update_shopify_item_on_update:
 		product = Product.find(product_id)
 		if product:
@@ -464,6 +466,21 @@ def upload_erpnext_item(doc, method=None):
 				)
 
 			write_upload_log(status=is_successful, product=product, item=item, action="Updated")
+			if is_successful:
+				_push_catalog_prices_after_upload(item.name, setting)
+
+
+def _push_catalog_prices_after_upload(item_code: str, setting) -> None:
+	"""Push mapped catalog fixed prices after a successful REST product upload."""
+	try:
+		from ecommerce_integrations.shopify.catalog_prices import push_catalog_prices_for_item
+
+		push_catalog_prices_for_item(item_code, setting=setting)
+	except Exception:
+		frappe.log_error(
+			title=f"Shopify catalog price push after upload failed ({item_code})",
+			message=frappe.get_traceback(),
+		)
 
 
 def _build_variant_attributes(item, template_item, selected_options) -> dict:
