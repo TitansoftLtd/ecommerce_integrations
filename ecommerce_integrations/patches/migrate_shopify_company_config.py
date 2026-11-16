@@ -4,13 +4,16 @@ from ecommerce_integrations.shopify.constants import SETTING_DOCTYPE
 
 
 def execute():
-	"""Seed Shopify Company Config from legacy single-company Shopify Setting fields."""
-	frappe.reload_doc("shopify", "doctype", "shopify_company_config")
-	frappe.reload_doc("shopify", "doctype", "shopify_tax_account")
-	frappe.reload_doc("shopify", "doctype", "shopify_warehouse_mapping")
-	frappe.reload_doc("shopify", "doctype", "shopify_setting")
+	"""Seed Shopify Company Config from legacy single-company Shopify Setting fields.
 
+	Must run post_model_sync: get_doc(Shopify Setting) loads every child table
+	(including ones added later, e.g. Payment Gateway Map), which do not exist
+	before schema sync on a fresh install.
+	"""
 	if not frappe.db.exists("DocType", SETTING_DOCTYPE):
+		return
+
+	if not frappe.db.table_exists("Shopify Company Config"):
 		return
 
 	setting = frappe.get_doc(SETTING_DOCTYPE)
